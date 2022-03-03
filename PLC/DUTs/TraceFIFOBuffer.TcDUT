@@ -1,0 +1,11 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.9">
+  <DUT Name="TraceFIFOBuffer" Id="{fc21fe8b-91ee-458d-963d-09d49eaf9e7f}">
+    <Declaration><![CDATA[TYPE TraceFIFOBuffer :
+STRUCT
+	Size: UDINT := 1000;
+	Buffer: ARRAY [0..999] OF StateTimeStamp;
+END_STRUCT
+END_TYPE]]></Declaration>
+  </DUT>
+</TcPlcObject>

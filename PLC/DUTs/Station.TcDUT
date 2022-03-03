@@ -1,0 +1,58 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.9">
+  <DUT Name="Station" Id="{292e64d6-2156-42c3-8a6b-38f2bcf75aa8}">
+    <Declaration><![CDATA[TYPE Station :
+STRUCT
+	CycleAuto: BOOL;
+	CycleReset: BOOL;
+	CycleManual: BOOL;
+	CycleStopped: BOOL;
+	CycleFaulted: BOOL;
+	OKToStop: BOOL;
+	OKForManual: BOOL;
+	StopRequest: BOOL;
+	EmergencyStop: BOOL;
+	UnlatchFaults: BOOL;
+	FaultReset: BOOL;
+	FullInitRequired: BOOL;
+	ResetDone: BOOL;
+	SingleStep: BOOL;
+	StepAdvance: BOOL;
+	DryCycle: BOOL;
+	Attention: BOOL;
+	MachineStopRqst: BOOL;
+
+	hiCycleStart: BOOL;
+	hiCycleStop: BOOL;
+	hiFaultAck: BOOL;
+	hiFaultReset: BOOL;
+	hiStationReset: BOOL;
+	hiSingleStepOn: BOOL;
+	hiSingleStepOff: BOOL;
+	hiSingleStepAdvance: BOOL;
+	hiManualMode: BOOL;
+	hiLampTest: BOOL;
+	hoStationResetRequired: BOOL;
+
+	StationID: DINT;
+	FirstFault: StatsFault;
+	PreviousStationID: DINT;
+	NextStationID: DINT;
+	HMIMessageFIFO: FIFO_HMIMessage;
+	HMIMessageBuffer: HMIMessageBuffer;
+	StationMessage: HMIBanner;
+	OperatorMessage: HMIBanner;
+	b500msPulse: BOOL;
+
+	FaultedFIFO: FIFO_ID50;
+	FaultedFIFOBuffer: ID50FIFOBuffer;
+	NotOKtoStopFIFO: FIFO_ID50;
+	NotOKToStopFIFOBuffer: ID50FIFOBuffer;
+	AttentionRequiredFIFO: FIFO_ID50;
+	AttentionRequiredFIFOBuffer: ID50FIFOBuffer;
+	CycleManualFIFO: FIFO_ID50;
+	CycleManualFIFOBuffer: ID50FIFOBuffer;
+END_STRUCT
+END_TYPE]]></Declaration>
+  </DUT>
+</TcPlcObject>

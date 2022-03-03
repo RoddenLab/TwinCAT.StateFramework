@@ -1,0 +1,111 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.9">
+  <POU Name="FIFO_ID50" Id="{2165d411-34e2-4393-bb15-f7ef5ebc374c}" SpecialFunc="None">
+    <Declaration><![CDATA[FUNCTION_BLOCK FIFO_ID50
+VAR_INPUT
+	Overwrite: BOOL;
+	pFIFO: POINTER TO ID50FIFOBuffer;
+	in: ComponentIdentifier;
+END_VAR
+
+VAR_OUTPUT
+	Err: BOOL;
+	Count: DINT;
+	Full: BOOL;
+	out: ComponentIdentifier;
+END_VAR
+
+VAR
+	Head: UDINT;
+	Tail: UDINT;
+	Idx: UDINT;
+END_VAR
+]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[]]></ST>
+    </Implementation>
+    <Action Name="INIT" Id="{4973c830-2aea-4bdc-bd11-f623cacda1cb}">
+      <Implementation>
+        <ST><![CDATA[Idx := pFIFO^.Size * SIZEOF(in);
+MEMSET(ADR(pFIFO^.Buffer[0]), 0, Idx);
+MEMSET(ADR(in), 0, SIZEOF(in));
+MEMSET(ADR(out), 0, SIZEOF(out));
+Count := 0;
+Head := 0;
+Tail := 0;
+Full := 0;
+Err := 0;]]></ST>
+      </Implementation>
+    </Action>
+    <Action Name="LOAD" Id="{4fcccdbc-92ac-4202-90ee-fc19c852e07d}">
+      <Implementation>
+        <ST><![CDATA[Err := 0;
+IF (Full AND Overwrite) OR NOT Full THEN
+	pFIFO^.Buffer[Head] := in;
+	Head := Head + 1;
+	IF Head = pFIFO^.Size THEN
+		Head := 0;
+	END_IF
+	IF Full THEN
+		Tail := Tail + 1;
+		IF Tail = pFIFO^.Size THEN
+			Tail := 0;
+		END_IF
+	ELSE
+		Count := Count + 1;
+	END_IF
+ELSE
+	Err := 1;
+END_IF
+Full := (Head = Tail);]]></ST>
+      </Implementation>
+    </Action>
+    <Action Name="PEEK" Id="{4da372da-cd36-4400-a23d-a2a7b3d66376}">
+      <Implementation>
+        <ST><![CDATA[Err := 0;
+IF Full OR (Tail <> Head) THEN
+	out := pFIFO^.Buffer[Tail];
+ELSE
+	Err := 1; (*fifo is empty*)
+END_IF]]></ST>
+      </Implementation>
+    </Action>
+    <Action Name="UNLOAD" Id="{c334d1b7-569b-43ae-89b1-aacf674be5ea}">
+      <Implementation>
+        <ST><![CDATA[Err := 0;
+IF NOT Full AND (Head = Tail) THEN
+	(*empty*)
+	Err := 1;
+ELSE
+	out := pFIFO^.Buffer[Tail];
+	MEMSET(ADR(pFIFO^.Buffer[Tail]), 0, SIZEOF (in));
+	Tail := Tail + 1;
+	Count := Count - 1;
+	IF Tail = pFIFO^.Size THEN
+		Tail := 0;
+	END_IF
+	Full := 0;
+END_IF]]></ST>
+      </Implementation>
+    </Action>
+    <LineIds Name="FIFO_ID50">
+      <LineId Id="9" Count="0" />
+    </LineIds>
+    <LineIds Name="FIFO_ID50.INIT">
+      <LineId Id="2" Count="7" />
+      <LineId Id="1" Count="0" />
+    </LineIds>
+    <LineIds Name="FIFO_ID50.LOAD">
+      <LineId Id="2" Count="17" />
+      <LineId Id="1" Count="0" />
+    </LineIds>
+    <LineIds Name="FIFO_ID50.PEEK">
+      <LineId Id="2" Count="4" />
+      <LineId Id="1" Count="0" />
+    </LineIds>
+    <LineIds Name="FIFO_ID50.UNLOAD">
+      <LineId Id="2" Count="12" />
+      <LineId Id="1" Count="0" />
+    </LineIds>
+  </POU>
+</TcPlcObject>

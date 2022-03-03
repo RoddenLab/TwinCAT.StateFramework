@@ -1,0 +1,11 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.9">
+  <DUT Name="StatsFailureFIFOBuffer" Id="{f15d0fc5-6812-4058-b562-8bb8f6b29425}">
+    <Declaration><![CDATA[TYPE StatsFailureFIFOBuffer :
+STRUCT
+	Size: UDINT := 500;
+	Buffer: ARRAY [0..499] OF StatsFailure;
+END_STRUCT
+END_TYPE]]></Declaration>
+  </DUT>
+</TcPlcObject>

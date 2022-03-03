@@ -1,0 +1,40 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.9">
+  <DUT Name="StatsAggregateRecord" Id="{b0309df7-116a-4790-91e3-361ef6bdbb13}">
+    <Declaration><![CDATA[TYPE StatsAggregateRecord :
+STRUCT
+	TimeStamp: TimeStamp;
+	OperatorStopTime: LREAL;
+	OperatorStopCount: DINT;
+	AutoStopTime: LREAL;
+	AutoStopCount: DINT;
+	WorkTime: LREAL;
+	WorkCount: DINT;
+	BypassTime: LREAL;
+	BypassCount: DINT;
+	BlockTime: LREAL;
+	BlockCount: DINT;
+	StarveTime: LREAL;
+	StarveCount: DINT;
+	FaultTime: LREAL;
+	FaultCount: DINT;
+	EmptyTime: LREAL;
+	EmptyCount: DINT;
+	RetryTime: LREAL;
+	RetryCount: DINT;
+	MasterTime: LREAL;
+	MasterCount: DINT;
+	OtherTime: LREAL;
+	OtherCount: DINT;
+	RejectCount: DINT;
+	GoodCount: DINT;
+	FirstTimeGoodCount: DINT;
+	FirstTimeStartCount: DINT;
+	GoodCycleTime: LREAL;
+	InitCount: DINT;
+	PartsForCurrentCycleTime: DINT;
+	Shift: DINT;
+END_STRUCT
+END_TYPE]]></Declaration>
+  </DUT>
+</TcPlcObject>

@@ -1,0 +1,487 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.9">
+  <POU Name="FB_TCPClient" Id="{997f0a44-65e1-42c2-b04d-891273e5eb3d}" SpecialFunc="None">
+    <Declaration><![CDATA[// Function Block Organizing TCP Client Connection and Communication to Server
+FUNCTION_BLOCK FB_TCPClient
+// Inputs and Commands
+VAR_INPUT
+	RemoteHost			: STRING(15);				// Remote TCP Server Address
+	RemotePort			: UDINT;					// Remote TCP Server Port
+	Connect				: BOOL;						// Command to Connect Client to Remote Server
+	Send				: BOOL;						// Command to Send TCP Message to Remote Server
+	Received			: BOOL;						// Command to Indicate Message Received, Reset for Additional Receives 
+	ClearError			: BOOL;						// Command to Clear Error Condition
+	Flush				: BOOL;						// Command to Flush Buffers
+	TransmitBuffer		: ARRAY [0..4095] OF BYTE;	// Buffer for TCP Message Send
+	TransmitLength		: UDINT;					// Length of TCP Message
+END_VAR
+
+// Receive Configuration Inputs
+VAR_INPUT
+	MessageDelimiter	: ARRAY [0..11] OF BYTE;	// Buffer for TCP Message Delimiter
+	DelimiterLength		: UDINT;					// Length of TCP Message Delimeter
+	MessageLength		: UDINT;					// Fixed Length of TCP Messages
+	ReceiveMode			: eRxMode;					// Message Receive Mode Configuration
+END_VAR
+
+// Outputs and Statuses
+VAR_OUTPUT
+	ReceiveBuffer		: ARRAY[0..4095] OF BYTE;	// Buffer Containing Received TCP Messages
+	ReceiveLength		: UDINT;					// Length of Message in Receive Buffer
+	DataAvailable		: BOOL;						// Flag Indicating New Receive Data Available
+	Connected			: BOOL;						// Status of TCP Client Connection to Remote Server
+	TransmitComplete	: BOOL;						// Flag Indicating TCP Message Send Completed
+	Error				: BOOL;						// Flag Indicating Error with TCP Communication
+	ErrorText			: T_MaxString;				// Human-Readable Text Related to Active Error Condition
+	FlushComplete		: BOOL;						// Flag Indicating Flush of Buffers Complete
+END_VAR
+
+// Internal State Machine Variable
+VAR
+	State				: DINT;						// Current State of TCP Communications
+	NextState			: DINT;						// Next State for TCP Communications
+	FirstEntry			: BOOL;						// Flag Indicating First Entry to State
+	StateDwellTimer		: TON;						// Timer for Dwell in States
+	StateTimePreset		: TIME;						// Time Limit for Dwell in States
+END_VAR
+
+// Message Processing Variables
+VAR
+	RxBuffer			: ARRAY[0..4095] OF BYTE; 	// Buffer for Receiving Input Data
+	InBuffer			: ARRAY[0..12287] OF BYTE;	// Buffer for Processing Input Data
+	InBufferDataLength	: UDINT;					// Input Data Length
+	TempBuffer			: ARRAY[0..12287] OF BYTE;	// Buffer for Bitwise Shifting of Messages
+	Index				: UDINT;					// Index Used for Searching Buffers
+	EOFIndex			: UDINT;					// Index of Delimiter
+	EOFCount			: UDINT;					// Count of Delimiters 
+END_VAR
+
+// Low-Level TwinCAT TCP Libraries
+VAR
+	hSocketHandle		: T_HSOCKET;				// Handle for TCP Socket Connection
+	fbSocketConnect		: FB_SocketConnect;			// Function Block for TCP Client Connection
+	fbSocketClose		: FB_SocketClose;			// Function Block to Close TCP Socket
+	fbSocketCloseAll	: FB_SocketCloseAll;		// Function Block to Close All Sockets
+	fbSocketReceive		: FB_SocketReceive;			// Function Block to Poll Socket Memory Buffer
+	fbSocketSend		: FB_SocketSend;			// Function Block to Send Message to Server
+END_VAR
+]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[(*If State Change, capture rising edge with FirstEntry.*)
+IF State <> NextState THEN
+	FirstEntry := TRUE;
+	State := NextState;
+ELSE 
+	FirstEntry := FALSE;
+END_IF
+
+StateDwellTimer(IN := State = NextState, PT := StateTimePreset);
+
+(**********************
+* Sequence logic *
+***********************)
+CASE State OF
+
+0:	// Wait for Connect Command
+
+	IF FirstEntry THEN
+		fbSocketConnect(bExecute := FALSE);
+		Connected := FALSE;
+		DataAvailable := FALSE;
+		FlushComplete := FALSE;
+	END_IF
+	
+	IF Connect AND NOT Error THEN
+		NextState := 100;
+		
+	ELSIF ClearError THEN
+		Error := FALSE;
+		ErrorText := '';
+	END_IF
+	
+
+100:	// Validate TCP Server
+
+	IF RemoteHost = '' OR RemotePort = 0 THEN
+		Error := TRUE;
+		ErrorText := 'Invalid connect parameters';
+	END_IF
+	
+	IF NOT Error THEN
+		NextState := 110;
+	ELSE
+		NextState := 0;
+	END_IF
+
+	
+110:	// Connect to Server
+
+	IF FirstEntry THEN
+		fbSocketConnect(
+			sSrvNetId 	:= '',
+			sRemoteHost := RemoteHost,
+			nRemotePort := RemotePort,
+			bExecute 	:= TRUE,
+			tTimeout 	:= T#15S);
+	END_IF
+	
+	IF fbSocketConnect.bBusy THEN
+		NextState := 120;
+	END_IF
+
+	
+120:	// Wait for Connection
+
+	StateTimePreset := T#4S;
+	
+	fbSocketConnect(bExecute:= FALSE);
+	
+	// Wait for Connect to Complete
+	IF NOT fbSocketConnect.bBusy THEN
+		// If Connected with Error
+		IF fbSocketConnect.bError THEN
+			Error := TRUE;
+			ErrorText:= 'Socket Connection Could Not Be Made To ';
+			ErrorText := CONCAT(ErrorText, RemoteHost);
+			ErrorText := CONCAT(ErrorText, ' Port ');
+ 			ErrorText := CONCAT(ErrorText, TO_STRING(RemotePort));
+			NextState := 500; // Error State
+		ELSE
+			// Check if Handle Created
+			IF fbSocketConnect.hSocket.handle > 0 THEN
+				hSocketHandle := fbSocketConnect.hSocket;
+				Connected := TRUE;
+				NextState := 600; // Clear Input Buffer
+			ELSE
+				Error := TRUE;
+				ErrorText := 'Improper Handle Created by Connection ';
+				ErrorText := CONCAT(ErrorText, TO_STRING(fbSocketConnect.hSocket.handle));
+				NextState := 500;
+			END_IF
+		END_IF
+	ELSE
+		// Timeout After Preset
+		IF StateDwellTimer.Q THEN
+			Error := TRUE;
+			ErrorText := 'Socket Connection Timed Out: ';
+			ErrorText := CONCAT(ErrorText, RemoteHost);
+			ErrorText := CONCAT(ErrorText, ' Port ');
+ 			ErrorText := CONCAT(ErrorText, TO_STRING(RemotePort));
+			NextState := 500; // Error State
+		END_IF
+	END_IF
+
+	
+200: // Client Connected, Wait for Command
+
+	// Connect Command Removed
+	IF NOT Connect THEN
+		NextState := 500;
+	END_IF
+	
+	// Receive Message Command
+	IF Received THEN
+		NextState := 300;
+	END_IF
+	
+	// Send Message Command
+	IF Send THEN
+		NextState := 400;
+	END_IF
+	
+	// Flush Buffers Command
+	IF Flush THEN
+		NextState := 600;
+	END_IF
+
+	StateTimePreset := T#100MS;
+	
+	// Poll for New Receive
+	IF StateDwellTimer.Q AND NextState = 200 THEN
+		NextState := 210;
+		fbSocketReceive(bExecute := FALSE);
+	END_IF
+	
+
+210: 	// Poll Receive Buffer
+
+	IF FirstEntry THEN
+		fbSocketReceive(
+			sSrvNetId 	:= '',
+			hSocket 	:= hSocketHandle ,
+			cbLen 		:= SIZEOF(RxBuffer),
+			pDest 		:= ADR(RxBuffer),
+			bExecute 	:= TRUE,
+			tTimeout 	:= T#5S);
+	END_IF
+	
+	IF NOT FirstEntry AND fbSocketReceive.bBusy THEN
+		NextState := 220;
+	END_IF
+	
+
+220:	// Wait for Return
+
+	fbSocketReceive(bExecute := FALSE);
+	
+	IF NOT fbSocketReceive.bBusy THEN
+		IF NOT fbSocketReceive.bError THEN
+			IF fbSocketReceive.nRecBytes > 0 THEN
+				NextState := 230;
+			ELSE
+				NextState := 200;
+			END_IF
+		ELSE
+			Error := 1;
+			ErrorText := 'Socket Receive Error: ';
+			ErrorText := CONCAT(ErrorText, RemoteHost);
+			ErrorText := CONCAT(ErrorText, ' Port ');
+ 			ErrorText := CONCAT(ErrorText, DINT_TO_STRING(RemotePort));
+			NextState := 500;
+		END_IF
+	END_IF
+
+	
+230: // Copy Received Data
+
+	// Check if Data Fits in Input Buffer
+	IF (fbSocketReceive.nRecBytes + InBufferDataLength) <= SIZEOF(InBuffer) THEN
+		
+		// Copy Data from Receive Buffer to Input Buffer
+		MEMCPY(ADR(InBuffer[InBufferDataLength]), ADR(RxBuffer), fbSocketReceive.nRecBytes);
+		InBufferDataLength := InBufferDataLength + fbSocketReceive.nRecBytes;
+		
+		// Clear Receive Buffer
+		MEMSET(ADR(RxBuffer), 0, SIZEOF(RxBuffer));
+		NextState := 240;
+	ELSE
+		Error := 1;
+		ErrorText := 'Buffer Overflow';
+		NextState := 500;
+	END_IF
+
+	
+240: // Construct TCP Message
+
+	CASE ReceiveMode OF
+
+		// Search for Delimiter
+		eRxMode.Delimited:
+
+			// Message Not Defined, Search Buffer
+			IF NOT DataAvailable THEN
+				
+				// Initialize Delimiter Count
+				EOFCount := 0;
+				
+				// Search Buffer from Tail
+				FOR Index := 0 TO InBufferDataLength - 1 DO
+					// If Match Found - Iterate EOF Count (For Delimiter Length)
+					IF InBuffer[index] = MessageDelimiter[EOFCount] THEN
+						EOFCount := EOFCount + 1;
+						IF EOFCount = DelimiterLength THEN
+							EOFIndex := Index - DelimiterLength + 1;
+							EXIT;
+						END_IF
+					ELSE
+						// If EOF Count > 0, Reset and Continue Search 
+						IF EOFCount > 0 THEN
+							EOFCount := 0;
+							IF InBuffer[index] = MessageDelimiter[EOFCount] THEN
+								EOFCount := 1;
+							END_IF
+						END_IF
+					END_IF
+				END_FOR;
+			END_IF
+			
+			// Message Found in Buffer
+			IF EOFIndex > 0 THEN 
+				// Copy Message (Including Delimiter) to Receive Buffer
+				ReceiveLength := EOFIndex + DelimiterLength;
+				MEMCPY(ADR(ReceiveBuffer), ADR(InBuffer[0]), ReceiveLength);
+				Index := EOFIndex + DelimiterLength;
+				
+				// If Data Remaining in Input Buffer, Bit-Shift to Head
+				IF ReceiveLength < InBufferDataLength THEN
+					MEMCPY(ADR(TempBuffer), ADR(InBuffer[ReceiveLength]), InBufferDataLength - ReceiveLength);
+					MEMSET(ADR(InBuffer), 0, SIZEOF(InBuffer));
+					InBufferDataLength := InBufferDataLength - ReceiveLength;
+					MEMCPY(ADR(InBuffer), ADR(TempBuffer), InBufferDataLength);
+					MEMSET(ADR(TempBuffer), 0, SIZEOF(TempBuffer));
+					
+				// Otherwise, Clear Input Buffer
+				ELSE
+					MEMSET(ADR(InBuffer), 0, SIZEOF(InBuffer));
+					InBufferDataLength := 0;
+				END_IF
+				
+				DataAvailable := TRUE;
+				EOFIndex := 0;
+			END_IF
+			
+			NextState := 200; // Return to Dispatch
+
+			
+		eRxMode.FixedLength: 
+
+			
+			IF NOT DataAvailable THEN
+				// Check if Input Data Sufficient Length
+				IF InBufferDataLength >= MessageLength THEN
+					// Copy Message to Receive Buffer
+					MEMCPY(ADR(ReceiveBuffer), ADR(InBuffer), MessageLength);
+					ReceiveLength := MessageLength;
+					InBufferDataLength := InBufferDataLength - MessageLength;
+					
+					// If Input Buffer Still Contains Data, Bit-Shift to Head
+					IF InBufferDataLength > 0 THEN
+						MEMCPY(ADR(TempBuffer), ADR(InBuffer[MessageLength]), InBufferDataLength);
+						MEMSET(ADR(InBuffer), 0, SIZEOF(InBuffer));
+						MEMCPY(ADR(InBuffer), ADR(TempBuffer), InBufferDataLength);
+					
+					// Otherwise, Clear Input Buffer
+					ELSE
+						MEMSET(ADR(InBuffer),0,SIZEOF(InBuffer));
+						InBufferDataLength := 0;
+					END_IF
+					
+					DataAvailable := TRUE;
+				END_IF
+			END_IF
+			
+			NextState := 200; // Return to Dispatch
+			
+
+		eRxMode.Continuous:
+ 
+			NextState := 200; // Return to Dispatch
+			
+			
+		ELSE
+			Error := TRUE;
+			ErrorText := 'Unknown RxMode Selected';
+			NextState := 500;
+			
+	END_CASE;
+
+
+300:	// Reset Message Received Buffer
+
+	IF FirstEntry THEN
+		DataAvailable := FALSE;
+		MEMSET(ADR(ReceiveBuffer), 0, SIZEOF(ReceiveBuffer));
+		ReceiveLength := 0;
+	END_IF
+
+	IF NOT Received THEN
+		// If Data in Input Buffer, Process and Receive
+		IF InBufferDataLength > 0 THEN
+			NextState := 240; // Receive Data
+		ELSE
+			NextState := 200; // Dispatch
+		END_IF
+	END_IF
+	
+
+400:	// Transmit Data
+
+	IF FirstEntry THEN
+		fbSocketSend(bExecute := FALSE);
+		fbSocketSend(
+			sSrvNetId 	:= '',
+			hSocket 	:= hSocketHandle,
+			cbLen 		:= TransmitLength + 1,
+			pSrc 		:= ADR(TransmitBuffer),
+			bExecute 	:= TRUE,
+			tTimeout 	:= T#5S);
+	END_IF
+	
+	IF NOT FirstEntry THEN
+		IF fbSocketSend.bBusy THEN
+			TransmitComplete := TRUE;
+			NextState := 410; // Wait for Reset
+		ELSIF fbSocketSend.bError THEN
+			Error := TRUE;
+			ErrorText := 'TCP/IP Send error';
+			NextState := 500; // Close TCP Connection
+		END_IF
+	END_IF
+
+	
+410:	// Wait for Send Reset
+
+	fbSocketSend(bExecute := FALSE);
+	
+	IF NOT Send THEN
+		TransmitComplete := FALSE;
+		NextState := 200;
+	END_IF
+
+	
+500:	// Close Connection
+
+	IF FirstEntry THEN
+		fbSocketClose(bExecute:= FALSE);
+		fbSocketClose(
+			sSrvNetId 	:= '',
+			hSocket 	:= hSocketHandle,
+			bExecute 	:= TRUE,
+			tTimeout 	:= T#15S);
+	END_IF
+	
+	StateTimePreset := T#1S;
+	
+	IF fbSocketClose.bBusy THEN
+		NextState := 510;
+	END_IF
+	
+	IF StateDwellTimer.Q THEN
+		Error := TRUE;
+		ErrorText := 'Socket Close Error: ';
+		ErrorText := CONCAT(ErrorText, RemoteHost);
+		ErrorText := CONCAT(ErrorText, ' Port ');
+		ErrorText := CONCAT(ErrorText, DINT_TO_STRING(RemotePort));
+		NextState := 510;
+	END_IF
+
+	
+510: // Wait for Close
+
+	fbSocketClose(bExecute := FALSE);
+	
+	IF NOT fbSocketClose.bBusy THEN
+		NextState := 0;
+	END_IF
+
+	
+600: 	// Clear Data from Buffers
+
+	IF FirstEntry THEN
+		MEMSET(ADR(InBuffer), 0, SIZEOF(InBuffer));
+		MEMSET(ADR(TempBuffer), 0, SIZEOF(TempBuffer));
+		MEMSET(ADR(ReceiveBuffer), 0, SIZEOF(ReceiveBuffer));
+		InBufferDataLength := 0;
+		Error := FALSE;
+		DataAvailable := FALSE;
+		TransmitComplete := FALSE;
+		FlushComplete := TRUE;
+	END_IF
+	
+	IF NOT Flush THEN
+		FlushComplete := FALSE;
+		NextState := 200;
+	END_IF
+
+END_CASE]]></ST>
+    </Implementation>
+    <LineIds Name="FB_TCPClient">
+      <LineId Id="9105" Count="385" />
+      <LineId Id="9521" Count="0" />
+      <LineId Id="9491" Count="4" />
+      <LineId Id="9522" Count="0" />
+      <LineId Id="9497" Count="12" />
+      <LineId Id="9" Count="0" />
+    </LineIds>
+  </POU>
+</TcPlcObject>

@@ -1,0 +1,173 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.9">
+  <POU Name="FIFO_DINT100" Id="{7c1c3604-1371-46cb-ac66-b36876d01ce8}" SpecialFunc="None">
+    <Declaration><![CDATA[FUNCTION_BLOCK FIFO_DINT100
+VAR_INPUT
+	Overwrite	: BOOL;							// Flag to Overwrite FIFO Elements (when filled)
+	pFIFO		: POINTER TO DINT100FIFOBuffer;	// Pointer to FIFO Memory
+END_VAR
+
+VAR_OUTPUT
+	Error		: BOOL;							// Flag Indicating Error with FIFO
+	Count		: DINT;							// Count of Elements Within FIFO
+	Full		: BOOL;							// Flag Indicating FIFO Full
+END_VAR
+
+VAR
+	Head		: UDINT;						// Index of Head Element (Newest)
+	Tail		: UDINT;						// Index of Tail Element (Oldest)
+END_VAR
+]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[]]></ST>
+    </Implementation>
+    <Action Name="INIT" Id="{7e8ad0bc-2fe9-4462-97ba-759b51c556fa}">
+      <Implementation>
+        <ST><![CDATA[// Clear Buffer and Output Data
+MEMSET(ADR(pFIFO^.Buffer), 0, SIZEOF(pFIFO^.Buffer));
+
+// Reset Count / Indicies
+Count 	:= 0;
+Head 	:= 0;
+Tail 	:= 0;
+
+// Reset Flags
+Full 	:= FALSE;
+Error 	:= FALSE;]]></ST>
+      </Implementation>
+    </Action>
+    <Method Name="LOAD" Id="{d1db5756-008a-4a67-bcb8-f1fcdd9f519e}">
+      <Declaration><![CDATA[METHOD LOAD : BOOL
+VAR_INPUT
+	Input	: DINT;
+END_VAR
+]]></Declaration>
+      <Implementation>
+        <ST><![CDATA[// Set Success Flag
+Error := FALSE;
+LOAD := TRUE;
+
+// Check if FIFO Has Room (or Overwrite Enabled)
+IF (Full AND Overwrite) OR NOT Full THEN
+	
+	// Set Head Element to Input Value
+	pFIFO^.Buffer[Head] := Input;
+	
+	// Iterate Head Index
+	Head := Head + 1;
+	
+	// Check if Head at Maximum Value, Rollover
+	IF Head = pFIFO^.Size THEN
+		Head := 0;
+	END_IF
+	
+	// If FIFO Full, Iterate Tail
+	IF Full THEN
+		Tail := Tail + 1;
+		
+		// If Tail at Maximum Value, Rollover
+		IF Tail = pFIFO^.Size THEN
+			Tail := 0;
+		END_IF
+		
+	// Otherwise Update Count
+	ELSE
+		Count := Count + 1;
+	END_IF
+	
+// Otherwise, Flag Failure (Value Appended to Full FIFO)
+ELSE
+	Error := TRUE;
+	LOAD := FALSE;
+	
+END_IF
+
+Full := Head = Tail;]]></ST>
+      </Implementation>
+    </Method>
+    <Method Name="PEEK" Id="{6aedafbb-5222-4107-8f0c-bb8a40fe694d}">
+      <Declaration><![CDATA[METHOD PEEK : DINT
+]]></Declaration>
+      <Implementation>
+        <ST><![CDATA[// Reset Error Flag
+Error := FALSE;
+
+// Check if FIFO Full or Tail
+IF Count > 0 THEN
+	PEEK := pFIFO^.Buffer[Tail];
+	
+// Otherwise, Flag Error (FIFO is Empty)
+ELSE
+	Error := TRUE;
+END_IF]]></ST>
+      </Implementation>
+    </Method>
+    <Method Name="UNLOAD" Id="{76b69b19-a999-4aff-86b4-8ba4d95157b4}">
+      <Declaration><![CDATA[METHOD UNLOAD : DINT
+]]></Declaration>
+      <Implementation>
+        <ST><![CDATA[// Reset Error Flag
+Error := FALSE;
+
+// Check if FIFO Has Elements
+IF Count > 0 THEN
+	
+	// Fetch Oldest Value from FIFO
+	UNLOAD := pFIFO^.Buffer[Tail];
+	
+	// Clear FIFO Position
+	pFIFO^.Buffer[Tail] := 0; 
+	
+	// Update Oldest Value Index
+	Tail := Tail + 1;
+	
+	// Update Element Count
+	Count := Count - 1;
+	
+	// Check for Rollover
+	IF Tail = pFIFO^.Size THEN
+		Tail := 0;
+	END_IF
+	
+	// Reset Full Flag
+	Full := FALSE;
+	
+// Otherwise, Flag Error (FIFO is Empty)
+ELSE
+	Error 	:= TRUE;
+	UNLOAD := 0;
+END_IF]]></ST>
+      </Implementation>
+    </Method>
+    <LineIds Name="FIFO_DINT100">
+      <LineId Id="9" Count="0" />
+    </LineIds>
+    <LineIds Name="FIFO_DINT100.INIT">
+      <LineId Id="15" Count="0" />
+      <LineId Id="3" Count="0" />
+      <LineId Id="14" Count="0" />
+      <LineId Id="13" Count="0" />
+      <LineId Id="6" Count="2" />
+      <LineId Id="12" Count="0" />
+      <LineId Id="11" Count="0" />
+      <LineId Id="9" Count="0" />
+      <LineId Id="1" Count="0" />
+    </LineIds>
+    <LineIds Name="FIFO_DINT100.LOAD">
+      <LineId Id="48" Count="1" />
+      <LineId Id="86" Count="0" />
+      <LineId Id="50" Count="31" />
+      <LineId Id="85" Count="0" />
+      <LineId Id="82" Count="2" />
+      <LineId Id="5" Count="0" />
+    </LineIds>
+    <LineIds Name="FIFO_DINT100.PEEK">
+      <LineId Id="17" Count="9" />
+      <LineId Id="5" Count="0" />
+    </LineIds>
+    <LineIds Name="FIFO_DINT100.UNLOAD">
+      <LineId Id="37" Count="29" />
+      <LineId Id="5" Count="0" />
+    </LineIds>
+  </POU>
+</TcPlcObject>

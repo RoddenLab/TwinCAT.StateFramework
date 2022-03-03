@@ -1,0 +1,28 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.9">
+  <DUT Name="Component_Stats" Id="{e084eaca-3d65-4203-ae12-800574c10673}">
+    <Declaration><![CDATA[TYPE Component_Stats :
+STRUCT
+	AggregateInterval			: DINT; 						(*interval time in minutes*)
+	PlannedDowntime				: ARRAY [0..2] OF DINT;  		(*index corresponds to shift number*)
+	StartOfShift				: ARRAY [0..2, 0..1] OF DINT; 	(*[shift number],[hour,min]*)
+	IdealCycleTime				: LREAL; 						(*cycle time is second*)
+	StatsEventFIFO				: FIFO_StatsEvent 			:= (Overwrite := TRUE);
+	StatsEventBuffer			: StatsEventFIFObuffer;
+	StatsAggregateFIFO			: FIFO_StatsAggregate 		:= (Overwrite := TRUE);
+	StatsAggregateBuffer		: StatsAggregateFIFOBuffer;
+	StatsShiftAggregateFIFO		: FIFO_StatsShiftAggregate 	:= (Overwrite := TRUE);
+	StatsShiftAggregateBuffer	: StatsShiftAggregateFIFOBuffer;
+	StatsFaultLog				: FIFO_StatsFaultLog 		:= (Overwrite := TRUE);
+	StatsFaultLogBuffer			: StatsFaultFIFOBuffer;
+	StatsFailureLog				: FIFO_StatsFailureLog 		:= (Overwrite := TRUE);
+	StatsFailureLogBuffer		: StatsFailureFIFOBuffer;
+	StatsIdealCycleTimeFIFO		: FIFO_LREAL100;
+	StatsIdealCycleTimeBuffer	: LREAL100FIFOBuffer;
+	StatsPartCountFIFO			: FIFO_DINT100;
+	StatsPartCountBuffer		: DINT100FIFOBuffer;
+	Framework					: Framework;
+END_STRUCT
+END_TYPE	]]></Declaration>
+  </DUT>
+</TcPlcObject>

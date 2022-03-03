@@ -1,0 +1,11 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.9">
+  <DUT Name="StatsShiftAggregateFIFOBuffer" Id="{02fc65c6-6f96-48a9-b93b-f1df50c0a57b}">
+    <Declaration><![CDATA[TYPE StatsShiftAggregateFIFOBuffer :
+STRUCT
+	Size: UDINT := 270; (*90 days*)
+	Buffer: ARRAY [0..269] OF StatsShiftAggregateRecord;
+END_STRUCT
+END_TYPE]]></Declaration>
+  </DUT>
+</TcPlcObject>

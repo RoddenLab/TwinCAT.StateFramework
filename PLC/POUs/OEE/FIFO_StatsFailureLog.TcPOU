@@ -1,0 +1,112 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.9">
+  <POU Name="FIFO_StatsFailureLog" Id="{7524f7be-fbef-4873-8b8b-aaba779d3e7d}" SpecialFunc="None">
+    <Declaration><![CDATA[FUNCTION_BLOCK FIFO_StatsFailureLog
+VAR_INPUT
+	Overwrite: BOOL;
+	pFIFO: POINTER TO StatsFailureFIFOBuffer;
+	in: StatsFailure;
+END_VAR
+
+VAR_OUTPUT
+	Err: BOOL;
+	Count: DINT;
+	Full: BOOL;
+	out: StatsFailure;
+END_VAR
+
+VAR
+	Head: UDINT;
+	Tail: UDINT;
+	Idx: UDINT;
+END_VAR
+
+]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[]]></ST>
+    </Implementation>
+    <Action Name="INIT" Id="{e150bb53-e6b9-4c3c-9134-202959e7935b}">
+      <Implementation>
+        <ST><![CDATA[Idx := pFIFO^.Size * SIZEOF(in);
+MEMSET(ADR(pFIFO^.Buffer[0]), 0, Idx);
+MEMSET(ADR(in), 0, SIZEOF(in));
+MEMSET(ADR(out), 0, SIZEOF(out));
+Count := 0;
+Head := 0;
+Tail := 0;
+Full := 0;
+Err := 0;]]></ST>
+      </Implementation>
+    </Action>
+    <Action Name="LOAD" Id="{22a3d9dc-7190-4d1c-96ba-5134d315e0b5}">
+      <Implementation>
+        <ST><![CDATA[Err := 0;
+IF (Full AND Overwrite) OR NOT Full THEN
+	pFIFO^.Buffer[Head] := in;
+	Head := Head + 1;
+	IF Head = pFIFO^.Size THEN
+		Head := 0;
+	END_IF
+	IF Full THEN
+		Tail := Tail + 1;
+		IF Tail = pFIFO^.Size THEN
+			Tail := 0;
+		END_IF
+	ELSE
+		Count := Count + 1;
+	END_IF
+ELSE
+	Err := 1;
+END_IF
+Full := (Head = Tail);]]></ST>
+      </Implementation>
+    </Action>
+    <Action Name="PEEK" Id="{5be378c8-35d2-4029-9eff-e6da20749449}">
+      <Implementation>
+        <ST><![CDATA[Err := 0;
+IF Full OR (Tail <> Head) THEN
+	out := pFIFO^.Buffer[Tail];
+ELSE
+	Err := 1; (*fifo is empty*)
+END_IF]]></ST>
+      </Implementation>
+    </Action>
+    <Action Name="UNLOAD" Id="{40d2e336-1e97-45c0-8905-b08fc7dae818}">
+      <Implementation>
+        <ST><![CDATA[Err := 0;
+IF NOT Full AND (Head = Tail) THEN
+	(*empty*)
+	Err := 1;
+ELSE
+	out := pFIFO^.Buffer[Tail];
+	MEMSET(ADR(pFIFO^.Buffer[Tail]), 0, SIZEOF (in));
+	Tail := Tail + 1;
+	Count := Count - 1;
+	IF Tail = pFIFO^.Size THEN
+		Tail := 0;
+	END_IF
+	Full := 0;
+END_IF]]></ST>
+      </Implementation>
+    </Action>
+    <LineIds Name="FIFO_StatsFailureLog">
+      <LineId Id="9" Count="0" />
+    </LineIds>
+    <LineIds Name="FIFO_StatsFailureLog.INIT">
+      <LineId Id="2" Count="7" />
+      <LineId Id="1" Count="0" />
+    </LineIds>
+    <LineIds Name="FIFO_StatsFailureLog.LOAD">
+      <LineId Id="2" Count="17" />
+      <LineId Id="1" Count="0" />
+    </LineIds>
+    <LineIds Name="FIFO_StatsFailureLog.PEEK">
+      <LineId Id="2" Count="4" />
+      <LineId Id="1" Count="0" />
+    </LineIds>
+    <LineIds Name="FIFO_StatsFailureLog.UNLOAD">
+      <LineId Id="2" Count="12" />
+      <LineId Id="1" Count="0" />
+    </LineIds>
+  </POU>
+</TcPlcObject>

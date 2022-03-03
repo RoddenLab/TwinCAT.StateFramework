@@ -1,0 +1,58 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.9">
+  <POU Name="FB_Sensor" Id="{dae64110-2125-448a-97a5-670244fb71ad}" SpecialFunc="None">
+    <Declaration><![CDATA[// Function Block for Delayed Triggers of DIO
+FUNCTION_BLOCK FB_Sensor
+VAR_INPUT
+	Reset			: BOOL;	// Reset Timers/Outputs
+	Input			: BOOL;	// Input Status
+	OnDelayTime		: TIME;	// Delay to Set On TRUE After Input TRUE
+	OffDelayTime	: TIME;	// Delay to Set Off TRUE After Input FALSE
+END_VAR
+
+VAR_OUTPUT
+	On				: BOOL;	// Status of Delayed Input TRUE
+	Off				: BOOL;	// Status of Delayed Input FALSE
+END_VAR
+
+VAR
+	On_TON			: TON;	// TON Delay for Input TRUE
+	Off_TON			: TON;	// TON Delay for Input False
+END_VAR]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[
+// If Reset Commanded, Reset All
+IF Reset THEN
+	On_TON(IN := FALSE);
+	Off_TON(IN := FALSE);
+	On := FALSE;
+	Off := FALSE;
+	
+// Otherwise, Evaluate TONs Based on Input Status
+ELSE
+	On_TON(
+		IN 	:= Input, 
+		PT 	:= OnDelayTime,
+		Q	=> On);
+	
+	Off_TON(
+		IN 	:= NOT Input, 
+		PT 	:= OffDelayTime,
+		Q	=> Off);
+END_IF;
+
+]]></ST>
+    </Implementation>
+    <LineIds Name="FB_Sensor">
+      <LineId Id="186" Count="1" />
+      <LineId Id="172" Count="5" />
+      <LineId Id="188" Count="0" />
+      <LineId Id="178" Count="1" />
+      <LineId Id="189" Count="2" />
+      <LineId Id="181" Count="1" />
+      <LineId Id="192" Count="2" />
+      <LineId Id="184" Count="1" />
+      <LineId Id="9" Count="0" />
+    </LineIds>
+  </POU>
+</TcPlcObject>

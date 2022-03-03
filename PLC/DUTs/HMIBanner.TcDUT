@@ -1,0 +1,12 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.9">
+  <DUT Name="HMIBanner" Id="{46001161-f6c9-4e06-8e94-8f25d704f1d9}">
+    <Declaration><![CDATA[TYPE HMIBanner :
+STRUCT
+	Text	: T_MaxString;
+	AltText	: STRING256;
+	Color	: eColor;
+END_STRUCT
+END_TYPE]]></Declaration>
+  </DUT>
+</TcPlcObject>

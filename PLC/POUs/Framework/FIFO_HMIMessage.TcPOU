@@ -1,0 +1,167 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.9">
+  <POU Name="FIFO_HMIMessage" Id="{ace7a3b6-0de9-4105-b32e-c152150a96b5}" SpecialFunc="None">
+    <Declaration><![CDATA[// HMI Message FIFO
+FUNCTION_BLOCK FIFO_HMIMessage
+
+VAR_INPUT
+	Overwrite	: BOOL;							// Flag to Overwrite FIFO Elements (when filled)
+	pFIFO		: POINTER TO HMIMessageBuffer;	// Pointer to FIFO Memory
+END_VAR
+
+VAR_OUTPUT
+	Error		: BOOL;							// Flag Indicating Error with FIFO
+	Count		: DINT;							// Count of Elements Within FIFO
+	Full		: BOOL;							// Flag Indicating FIFO Full
+END_VAR
+
+VAR
+	Head		: UDINT;						// Index of Head Element (Newest)
+	Tail		: UDINT;						// Index of Tail Element (Oldest)
+END_VAR]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[]]></ST>
+    </Implementation>
+    <Action Name="INIT" Id="{3a38e3e3-97c3-4a8b-9590-197e3f314ae0}">
+      <Implementation>
+        <ST><![CDATA[// Clear Buffer and Output Data
+MEMSET(ADR(pFIFO^.Buffer), 0, SIZEOF(pFIFO^.Buffer));
+
+// Reset Count / Indicies
+Count 	:= 0;
+Head 	:= 0;
+Tail 	:= 0;
+
+// Reset Flags
+Full 	:= FALSE;
+Error 	:= FALSE;]]></ST>
+      </Implementation>
+    </Action>
+    <Method Name="LOAD" Id="{9b9c1ee0-1fe0-460a-a8b6-1d61b641b3a2}">
+      <Declaration><![CDATA[METHOD LOAD : BOOL
+VAR_INPUT
+	Input	: HMIMessage;
+END_VAR
+]]></Declaration>
+      <Implementation>
+        <ST><![CDATA[// Set Success Flag
+Error := FALSE;
+LOAD := TRUE;
+
+// Check if FIFO Has Room (or Overwrite Enabled)
+IF (Full AND Overwrite) OR NOT Full THEN
+	
+	// Set Head Element to Input Value
+	pFIFO^.Buffer[Head] := Input;
+	
+	// Iterate Head Index
+	Head := Head + 1;
+	
+	// Check if Head at Maximum Value, Rollover
+	IF Head = pFIFO^.Size THEN
+		Head := 0;
+	END_IF
+	
+	// If FIFO Full, Iterate Tail
+	IF Full THEN
+		Tail := Tail + 1;
+		
+		// If Tail at Maximum Value, Rollover
+		IF Tail = pFIFO^.Size THEN
+			Tail := 0;
+		END_IF
+		
+	// Otherwise Update Count
+	ELSE
+		Count := Count + 1;
+	END_IF
+	
+// Otherwise, Flag Failure (Value Appended to Full FIFO)
+ELSE
+	Error := TRUE;
+	LOAD := FALSE;
+	
+END_IF
+
+Full := Head = Tail;]]></ST>
+      </Implementation>
+    </Method>
+    <Method Name="PEEK" Id="{27856dd5-c9db-488c-bf82-b8bb4281f575}">
+      <Declaration><![CDATA[METHOD PEEK : HMIMessage
+]]></Declaration>
+      <Implementation>
+        <ST><![CDATA[// Reset Error Flag
+Error := FALSE;
+
+// Check if FIFO Full or Tail
+IF Count > 0 THEN
+	PEEK := pFIFO^.Buffer[Tail];
+	
+// Otherwise, Flag Error (FIFO is Empty)
+ELSE
+	Error := TRUE;
+END_IF]]></ST>
+      </Implementation>
+    </Method>
+    <Method Name="UNLOAD" Id="{d27e8b03-6ec4-4cda-94a7-d2b9d679ac93}">
+      <Declaration><![CDATA[METHOD UNLOAD : HMIMessage
+]]></Declaration>
+      <Implementation>
+        <ST><![CDATA[// Reset Error Flag
+Error := FALSE;
+
+// Check if FIFO Has Elements
+IF Count > 0 THEN
+	
+	// Fetch Oldest Value from FIFO
+	UNLOAD := pFIFO^.Buffer[Tail];
+	
+	// Clear FIFO Position
+	pFIFO^.Buffer[Tail] := 0; 
+	
+	// Update Oldest Value Index
+	Tail := Tail + 1;
+	
+	// Update Element Count
+	Count := Count - 1;
+	
+	// Check for Rollover
+	IF Tail = pFIFO^.Size THEN
+		Tail := 0;
+	END_IF
+	
+	// Reset Full Flag
+	Full := FALSE;
+	
+// Otherwise, Flag Error (FIFO is Empty)
+ELSE
+	Error 	:= TRUE;
+	UNLOAD := 0;
+END_IF]]></ST>
+      </Implementation>
+    </Method>
+    <LineIds Name="FIFO_HMIMessage">
+      <LineId Id="9" Count="0" />
+    </LineIds>
+    <LineIds Name="FIFO_HMIMessage.INIT">
+      <LineId Id="10" Count="9" />
+      <LineId Id="1" Count="0" />
+    </LineIds>
+    <LineIds Name="FIFO_HMIMessage.LOAD">
+      <LineId Id="48" Count="1" />
+      <LineId Id="86" Count="0" />
+      <LineId Id="50" Count="31" />
+      <LineId Id="85" Count="0" />
+      <LineId Id="82" Count="2" />
+      <LineId Id="5" Count="0" />
+    </LineIds>
+    <LineIds Name="FIFO_HMIMessage.PEEK">
+      <LineId Id="17" Count="9" />
+      <LineId Id="5" Count="0" />
+    </LineIds>
+    <LineIds Name="FIFO_HMIMessage.UNLOAD">
+      <LineId Id="37" Count="29" />
+      <LineId Id="5" Count="0" />
+    </LineIds>
+  </POU>
+</TcPlcObject>

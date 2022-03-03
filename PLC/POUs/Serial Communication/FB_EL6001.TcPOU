@@ -1,0 +1,441 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.9">
+  <POU Name="FB_EL6001" Id="{6986ad06-b824-4dc3-b5ac-63fa93fdca96}" SpecialFunc="None">
+    <Declaration><![CDATA[// Function Block Used to Integrate the EL6001 Serial Communication Card
+FUNCTION_BLOCK FB_EL6001
+// Control/Integration Inputs
+VAR_INPUT
+	TransmitBuffer		: ARRAY [0..1023] OF USINT;	// Tx Message Buffer to Remote Connection
+	TransmitLength		: UDINT;					// Length of Tx Message
+	TransmitData		: BOOL;						// Command to Trigger Message Send
+	ReceiveData			: BOOL;						// Command to Trigger Message Receive
+	Initialize			: BOOL;						// Command to Initialize Serial Connection
+END_VAR
+
+// Configuration Inputs
+VAR_INPUT
+	Mode				: eRxMode;			// Method for Receiving Messages from Remote
+	EOFArray			: ARRAY [0..11] OF USINT;	// Buffer for Message Delimiter
+	EOFLength			: UDINT;					// Length of Message Delimiter
+	FixedMessageLength	: UDINT;					// Fixed Message Length (for Fixed Length Mode)
+END_VAR
+
+// EL6001 Device Connections
+VAR
+	InData		AT %I* 	: ARRAY [0..22] OF BYTE;	// Input Data from EL6001 Device
+	OutData		AT %Q* 	: ARRAY [0..22] OF BYTE;	// Output Data to EL6001 Device
+	SW			AT %I*	: UINT;						// Status Word from EL6001 Device
+	CW			AT %Q*	: UINT;						// Control Word to EL6001 Device
+END_VAR
+
+// Outputs
+VAR_OUTPUT
+	ReceiveBuffer		: ARRAY [0..1023] OF USINT;	// Rx Message from Remote Connection
+	ReceiveLength		: UDINT;						// Length of Rx Message
+	DataAvailable		: BOOL;						// Flag Indicating New Rx Data Available
+	TransmitComplete	: BOOL;						// Flag Indicating Tx Send Complete
+	InitializeComplete	: BOOL;						// Flag Indicating Initialization Completed
+	ErrorCode			: DINT;						// Error Code for Exceptions
+	Error				: BOOL;						// Flag Indicating Error Condition
+END_VAR
+
+// Internal State Machine Variables
+VAR
+	State				: DINT;						// Current State of Transmission State Machine
+	NextState			: DINT;						// Next State (for Exit/Entry Conditions)
+	FirstEntry			: BOOL;						// Flag Inicating First Entry to State
+	StateDwellTimer		: TON;						// TON to Track State Dwell
+	StateTimePreset		: TIME;						// Time Preset for State Dwell Timer
+END_VAR
+
+// Internal Memory Buffers
+VAR
+	NextCW				: UINT;						// Memory for Future CW
+	LastSW				: UINT;						// Memory for Previous SW
+	InBuffer			: ARRAY [0..1023] OF USINT;	// Buffer for Rx Data
+	InBufferDataLength	: UDINT;					// Length of Data in Rx Buffer
+	OutBuffer			: ARRAY [0..1023] OF USINT;	// Buffer for Tx Data
+	OutBufferDataLength	: UDINT;					// Length of Data in Tx Buffer
+	TempBuffer			: ARRAY [0..1023] OF USINT;	// Buffer Used for Bit-Wise Operations
+END_VAR
+
+// Internal Flags/Counters
+VAR
+	GetCharNum			: UDINT;
+	SendCharNum			: UDINT;
+	TempCW				: DWORD;
+	BitIndex			: SINT;
+	EOFIndex			: UDINT;
+	EOFCount			: UDINT;
+	Index				: UDINT;
+	SendIndex			: UDINT;
+END_VAR
+]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[// State Machine Update Logic
+
+IF NextState <> State THEN
+	// Set First Entry Flag
+	FirstEntry := TRUE;
+	
+	// Update State to Next State
+	State := NextState;
+	
+	// Clear State Dwell Timer
+	StateDwellTimer(IN := FALSE); 
+ELSE
+	// Reset First Entry Flag
+	FirstEntry := FALSE;	
+	
+	// Start State Dwell Timer
+	StateDwellTimer(IN := TRUE, PT := StateTimePreset); 
+END_IF
+
+
+(**********************
+* Sequence logic *
+***********************)
+
+CASE State OF
+
+0:	// Dispatch
+
+	// Initialize Serial Interface
+	IF Initialize THEN
+		NextState := 10;
+	END_IF
+	
+	IF NOT Error AND NOT ReceiveData THEN
+		// Data from Remote Detected
+		IF (SW.1 AND NOT LastSW.1) OR (NOT SW.1 AND LastSW.1) THEN
+			NextState := 100;
+		END_IF
+	END_IF
+	
+	// Receive Data from RxBuffer
+	IF ReceiveData THEN
+		NextState := 200;
+	END_IF
+	
+	// Data Not Finished Sending, Resume Send
+	IF OutBufferDataLength - SendIndex <> 0 THEN
+		NextState := 310;
+		
+	// New Send Commanded, Trigger Send
+	ELSIF TransmitData THEN
+		NextState := 300;
+	END_IF
+
+	
+10:	(*Initialize device*)
+
+	IF FirstEntry THEN
+		Error := FALSE;
+		ErrorCode := 0;
+		NextCW.2 := 1;
+	END_IF
+	
+	StateTimePreset := T#5S;
+		
+	IF SW.2 THEN
+		NextCW.2 := 0;
+		NextState := 20;
+	END_IF
+
+	// Check for Dwell Error
+	IF StateDwellTimer.Q THEN
+		Error := TRUE;
+		ErrorCode := 4;
+		NextCW.2 := 0;
+		NextState := 0;
+	END_IF
+
+20: 	(*wait for signal to go low*)
+
+	StateTimePreset := T#5S;
+
+	IF NOT SW.2 THEN
+		NextState := 30;
+	END_IF
+
+	// Check for Dwell Error
+	IF StateDwellTimer.Q THEN
+		Error := TRUE;
+		ErrorCode := 4;
+		NextState := 0;
+	END_IF
+
+30: // Clear Data
+
+	IF FirstEntry THEN
+		// Reset Data Buffers
+		MEMSET(ADR(InBuffer), 0, SIZEOF(InBuffer));
+		MEMSET(ADR(OutBuffer), 0, SIZEOF(OutBuffer));
+		MEMSET(ADR(ReceiveBuffer), 0, SIZEOF(ReceiveBuffer));
+		
+		// Reset Send/Receive Info
+		InBufferDataLength 	:= 0;
+		OutBufferDataLength := 0;
+		SendIndex 			:= 0;
+		SendCharNum 		:= 0;
+		NextCW 				:= 0;
+		
+		// Reset External Handshakes
+		ErrorCode 			:= 0;
+		Error 				:= FALSE;
+		DataAvailable 		:= FALSE;
+		TransmitComplete 	:= FALSE;
+		InitializeComplete 	:= TRUE;
+	END_IF
+	
+	// Wait for Initialize Handshake Reset
+	IF NOT Initialize THEN
+		InitializeComplete := FALSE;
+		// Return to Dispatch
+		NextState := 0;
+	END_IF
+
+100: // Fetch Data from Device
+
+	FOR BitIndex := 8 TO 15 DO
+		GetCharNum := DWORD_TO_UDINT(CSETBIT32(UDINT_TO_DWORD(GetCharNum), (BitIndex - 8), GETBIT32(SW, BitIndex)));
+	END_FOR;
+	
+	// If Data Fits in RxBuffer, Receive
+	IF (InBufferDataLength + GetCharNum) <= SIZEOF(Inbuffer) THEN
+		// Copy Input Data to RxBuffer, Starting at Next Entry
+		MEMCPY(ADR(InBuffer[InBufferDataLength]), ADR(InData), GetCharNum);
+		
+		// Extend Input Data Length by Char Num
+		InBufferDataLength := InBufferDataLength + GetCharNum;
+		
+		NextCW.1 := NOT(CW.1);
+		
+		NextState := 110;
+		
+	// Data Larger than RxBuffer, Set Error
+	ELSE
+		Error := TRUE;
+		ErrorCode := 1;
+		NextState := 0;
+	END_IF
+
+110: // Search for Message in Buffer
+
+	// Check Message Mode
+	CASE Mode OF
+		
+		// Delimiter Message Mode
+		eRxMode.Delimited:
+			
+			// Check if Data Available Flag Set (i.e. Message Defined)
+			IF NOT DataAvailable THEN
+	
+				// Cover for Duplicate Character Case ([DD] instead of [D])
+				EOFCount := 0;
+				
+				// Search for Delimiter, Start at Tail and Move to Head
+				FOR Index := 0 TO InBufferDataLength - 1 DO
+					// Message Delimiter Found
+					IF InBuffer[index] = EOFArray[EOFCount] THEN
+						EOFCount := EOFCount + 1;
+						IF EOFCount = EOFLength THEN
+							EOFIndex := Index - EOFLength + 1;
+							EXIT;
+						END_IF
+					ELSE
+						IF EOFCount > 0 THEN
+							// Reset EOF Counter, Look for New Match
+							EOFCount := 0; 
+							// Check if Current Index Matches EOF
+							IF InBuffer[index] = EOFArray[EOFCount] THEN
+								EOFCount := 1;
+							END_IF
+						END_IF
+					END_IF
+				END_FOR;
+			END_IF
+			
+			// Delimiter Found in Buffer, Message Defined
+			IF EOFIndex > 0 THEN
+				// Copy Message up to but not Including Delimiter to Receive Buffer
+				MEMCPY(ADR(ReceiveBuffer), ADR(InBuffer[0]), (EOFIndex));
+				Index := EOFIndex + EOFLength;
+				ReceiveLength := EOFIndex ;
+				
+				// Check if Data Remaining in Input Buffer
+				IF Index < InBufferDataLength THEN
+					// Bit-Shift Data to Head of Buffer
+					MEMCPY(ADR(TempBuffer[0]), ADR(InBuffer[Index]), (InBufferDataLength-Index));
+					MEMSET(ADR(InBuffer), 0, SIZEOF(InBuffer));
+					InBufferDataLength := InBufferDataLength - Index;
+					MEMCPY(ADR(InBuffer[0]), ADR(TempBuffer[0]), InBufferDataLength);
+					
+				// Clear Input Buffer
+				ELSE
+					MEMSET(ADR(InBuffer), 0, SIZEOF(InBuffer));
+					InBufferDataLength := 0;
+				END_IF
+				
+				// Set Data Available Flag
+				DataAvailable := TRUE;
+				EOFIndex := 0;
+				
+			END_IF
+			
+			// Return to Dispatch
+			NextState := 0;
+
+			
+		// Fixed Message Mode
+		eRxMode.FixedLength:
+			
+			// If Input Data Larger than Fixed Length, Copy to Receive Buffer
+			IF NOT DataAvailable AND (InBufferDataLength >= FixedMessageLength) THEN
+				// Copy to Receive Buffer
+				MEMCPY(ADR(ReceiveBuffer), ADR(InBuffer[0]), FixedMessageLength);
+				ReceiveLength := FixedMessageLength;
+				
+				// Remove Message from Input Buffer
+				InBufferDataLength := InBufferDataLength - FixedMessageLength;
+				
+				// Check if Data Still in Input Buffer
+				IF InBufferDataLength > 0 THEN
+					// Bit-Shift Remaining Data to Buffer Head 
+					MEMCPY(ADR(TempBuffer[0]), ADR(InBuffer[FixedMessageLength]), InBufferDataLength);
+					MEMSET(ADR(InBuffer), 0, SIZEOF(InBuffer));
+					MEMCPY(ADR(InBuffer[0]), ADR(TempBuffer[0]), InBufferDataLength);
+					
+				// Clear Input Buffer
+				ELSE
+					MEMSET(ADR(InBuffer), 0, SIZEOF(InBuffer));
+					InBufferDataLength := 0;
+				END_IF
+				
+				// Set Data Available Flag
+				DataAvailable := TRUE;
+			END_IF
+			
+			// Return to Dispatch
+			NextState := 0;
+
+			
+		// Continuous Read Mode
+		eRxMode.Continuous:
+		
+			// Return to Dispatch
+			NextState := 0;
+			
+		// Mode Not Defined
+		ELSE
+			Error := TRUE;
+			ErrorCode := 9;
+			NextState := 0;
+	END_CASE;
+
+	
+	
+	
+200: // Message Received
+
+	IF FirstEntry THEN
+		DataAvailable := FALSE;
+		MEMSET(ADR(ReceiveBuffer), 0, SIZEOF(ReceiveBuffer));
+		ReceiveLength := 0;
+		NextState := 0;
+	END_IF
+	
+	// Check if Additional Input Data
+	// Proceed to Receive Data 
+	IF InBufferDataLength > 0 THEN
+		NextState := 110;
+		
+	// Return to Dispatch
+	ELSE
+		NextState := 0;
+	END_IF
+
+
+300: // Transmit Message
+
+	IF FirstEntry THEN
+		OutBufferDataLength := TransmitLength;
+		MEMCPY(ADR(OutBuffer), ADR(TransmitBuffer), TransmitLength);
+		SendIndex := 0;
+	END_IF
+	
+	NextState := 310;
+	
+
+310: // Send Data to Remote Device
+
+	IF FirstEntry THEN
+		// Check if Transmit Data Length Larger than Output Data Buffer
+		// Send up to 22 Bytes of Data
+		IF OutBufferDataLength - SendIndex > 22 THEN
+			SendCharNum := 22;
+			MEMCPY(ADR(OutData), ADR(OutBuffer[SendIndex]), SendCharNum);
+			SendIndex := SendIndex + 22;
+		// Send Remaining Bytes of Data
+		ELSE
+			SendCharNum := OutBufferDataLength - SendIndex;
+			MEMCPY(ADR(OutData), ADR(OutBuffer[SendIndex]), SendCharNum);
+			SendIndex := OutBufferDataLength;
+		END_IF
+		
+		NextCW.0 := NOT(CW.0);
+	END_IF
+	
+	StateTimePreset := T#1S;
+	
+	IF LastSW.0 <> SW.0 THEN
+		// Check if All Data Sent
+		IF OutBufferDataLength - SendIndex = 0 THEN
+			// Proceed to Tranmit Done
+			NextState := 320;
+		ELSE
+			// Return to Dispatch
+			NextState := 0;
+		END_IF
+	END_IF
+	
+	// Check if Transmit Timeout
+	IF StateDwellTimer.Q THEN
+		Error := TRUE;
+		ErrorCode := 4;
+		NextState := 0;
+	END_IF
+
+320: // Transmit Done
+
+	// Set Transmit Complete Flag
+	IF FirstEntry THEN
+		TransmitComplete := TRUE;
+	END_IF
+	
+	// Wait for Transmit Command to Reset
+	IF NOT TransmitData THEN
+		TransmitComplete := FALSE;
+		// Return to Dispatch
+		NextState := 0;
+	END_IF
+
+END_CASE
+
+
+(*set output device bits*)
+LastSW := SW;
+TempCW := NextCW;
+FOR BitIndex := 8 TO 15 DO
+	TempCW := CSETBIT32(TempCW, (BitIndex ), GETBIT32(SendCharNum,(BitIndex-8)));
+END_FOR;
+CW := DWORD_TO_UINT(TempCW);]]></ST>
+    </Implementation>
+    <LineIds Name="FB_EL6001">
+      <LineId Id="1880" Count="17" />
+      <LineId Id="1911" Count="80" />
+      <LineId Id="1993" Count="257" />
+      <LineId Id="9" Count="0" />
+    </LineIds>
+  </POU>
+</TcPlcObject>

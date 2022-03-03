@@ -1,0 +1,129 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.9">
+  <POU Name="FIFO_StatsShiftAggregate" Id="{14a8082d-4a9d-4bd0-a4ce-4b335bcc3747}" SpecialFunc="None">
+    <Declaration><![CDATA[FUNCTION_BLOCK FIFO_StatsShiftAggregate
+VAR_INPUT
+	Overwrite: BOOL;
+	pFIFO: POINTER TO StatsShiftAggregateFIFOBuffer;
+	in: StatsShiftAggregateRecord;
+	PeekCnt: UDINT;
+END_VAR
+
+VAR_OUTPUT
+	Err: BOOL;
+	Count: DINT;
+	Full: BOOL;
+	out: StatsShiftAggregateRecord;
+END_VAR
+
+VAR
+	Head: UDINT;
+	Tail: UDINT;
+	Idx: UDINT;
+
+	PeekHead: UDINT;
+	PeekTail: UDINT;
+END_VAR
+]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[]]></ST>
+    </Implementation>
+    <Action Name="INIT" Id="{279997f5-89f0-4de7-917c-d2eee6a83657}">
+      <Implementation>
+        <ST><![CDATA[Idx := pFIFO^.Size * SIZEOF(in);
+MEMSET(ADR(pFIFO^.Buffer[0]), 0, Idx);
+MEMSET(ADR(in), 0, SIZEOF(in));
+MEMSET(ADR(out), 0, SIZEOF(out));
+Count := 0;
+Head := 0;
+Tail := 0;
+Full := 0;
+Err := 0;]]></ST>
+      </Implementation>
+    </Action>
+    <Action Name="LOAD" Id="{1b0d1afe-d7b3-4b08-a0a1-269d40281dea}">
+      <Implementation>
+        <ST><![CDATA[Err := 0;
+IF (Full AND Overwrite) OR NOT Full THEN
+	pFIFO^.Buffer[Head] := in;
+	Head := Head + 1;
+	IF Head = pFIFO^.Size THEN
+		Head := 0;
+	END_IF
+	IF Full THEN
+		Tail := Tail + 1;
+		IF Tail = pFIFO^.Size THEN
+			Tail := 0;
+		END_IF
+	ELSE
+		Count := Count + 1;
+	END_IF
+ELSE
+	Err := 1;
+END_IF
+Full := (Head = Tail);]]></ST>
+      </Implementation>
+    </Action>
+    <Action Name="PEEK" Id="{36c54d4d-11a9-4216-8f65-8ce599ad73ca}">
+      <Implementation>
+        <ST><![CDATA[Err := 0;
+PeekHead := Head;
+PeekTail := Tail;
+FOR Idx := 0 TO PeekCnt DO
+
+	IF NOT Full AND (PeekHead = PeekTail) THEN
+		(*empty*)
+		Err := 1;
+	ELSE
+		out := pFIFO^.Buffer[PeekTail];
+		PeekTail := PeekTail + 1;
+
+		IF PeekTail = pFIFO^.Size THEN
+			PeekTail := 0;
+		END_IF
+		Full := 0;
+	END_IF
+END_FOR
+
+PeekCnt := 0;]]></ST>
+      </Implementation>
+    </Action>
+    <Action Name="UNLOAD" Id="{3588b9a9-1cf0-4707-9d3b-e1cd319b66a7}">
+      <Implementation>
+        <ST><![CDATA[Err := 0;
+IF NOT Full AND (Head = Tail) THEN
+	(*empty*)
+	Err := 1;
+ELSE
+	out := pFIFO^.Buffer[Tail];
+	MEMSET(ADR(pFIFO^.Buffer[Tail]), 0, SIZEOF (in));
+	Tail := Tail + 1;
+	Count := Count - 1;
+	IF Tail = pFIFO^.Size THEN
+		Tail := 0;
+	END_IF
+	Full := 0;
+END_IF]]></ST>
+      </Implementation>
+    </Action>
+    <LineIds Name="FIFO_StatsShiftAggregate">
+      <LineId Id="9" Count="0" />
+    </LineIds>
+    <LineIds Name="FIFO_StatsShiftAggregate.INIT">
+      <LineId Id="2" Count="7" />
+      <LineId Id="1" Count="0" />
+    </LineIds>
+    <LineIds Name="FIFO_StatsShiftAggregate.LOAD">
+      <LineId Id="2" Count="17" />
+      <LineId Id="1" Count="0" />
+    </LineIds>
+    <LineIds Name="FIFO_StatsShiftAggregate.PEEK">
+      <LineId Id="2" Count="18" />
+      <LineId Id="1" Count="0" />
+    </LineIds>
+    <LineIds Name="FIFO_StatsShiftAggregate.UNLOAD">
+      <LineId Id="2" Count="12" />
+      <LineId Id="1" Count="0" />
+    </LineIds>
+  </POU>
+</TcPlcObject>

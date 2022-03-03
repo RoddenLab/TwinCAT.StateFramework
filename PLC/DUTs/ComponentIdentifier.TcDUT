@@ -1,0 +1,11 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.9">
+  <DUT Name="ComponentIdentifier" Id="{2609f4a8-7482-46b0-a472-6573b1a3098b}">
+    <Declaration><![CDATA[TYPE ComponentIdentifier :
+STRUCT
+	ID		: DINT;		// Component ID
+	Name	: STRING;	// Component Name
+END_STRUCT
+END_TYPE]]></Declaration>
+  </DUT>
+</TcPlcObject>

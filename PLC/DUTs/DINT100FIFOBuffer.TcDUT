@@ -1,0 +1,11 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.9">
+  <DUT Name="DINT100FIFOBuffer" Id="{cca85691-7abb-46d3-9baa-afd17d15894b}">
+    <Declaration><![CDATA[TYPE DINT100FIFOBuffer :
+STRUCT
+	Size	: UDINT := 100;				// Size of FIFO
+	Buffer	: ARRAY [0..99] OF DINT;	// Buffer of FIFO Elements
+END_STRUCT
+END_TYPE]]></Declaration>
+  </DUT>
+</TcPlcObject>

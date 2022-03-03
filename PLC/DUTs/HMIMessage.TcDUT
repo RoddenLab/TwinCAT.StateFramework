@@ -1,0 +1,13 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.9">
+  <DUT Name="HMIMessage" Id="{4d5d315b-a104-4365-9a4f-1c009095efa4}">
+    <Declaration><![CDATA[TYPE HMIMessage :
+STRUCT
+	Channel	: DINT;
+	Color	: DINT;
+	Text	: T_MaxString;
+	AltText	: T_MaxString;
+END_STRUCT
+END_TYPE]]></Declaration>
+  </DUT>
+</TcPlcObject>

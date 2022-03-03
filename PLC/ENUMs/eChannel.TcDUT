@@ -1,0 +1,17 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.9">
+  <DUT Name="eChannel" Id="{abc35b8a-9aec-4ac3-b9f2-276eb00ca094}">
+    <Declaration><![CDATA[{attribute 'qualified_only'}
+{attribute 'strict'}
+TYPE eChannel :
+(
+	Unspecified	:= 0,	// Message Channel Not Defined
+	Fault 		:= 1,	// Fault Channel
+	Attention 	:= 2,	// Attention Required Channel
+	General 	:= 3,	// General Information Channel
+	FirstFault 	:= 4	// First Fault (Startup) Channel
+) DINT := Unspecified;
+END_TYPE
+]]></Declaration>
+  </DUT>
+</TcPlcObject>

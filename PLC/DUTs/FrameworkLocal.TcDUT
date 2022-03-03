@@ -1,0 +1,54 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.9">
+  <DUT Name="FrameworkLocal" Id="{fef9d53f-e58c-45c6-99f6-51540a262244}">
+    <Declaration><![CDATA[TYPE FrameworkLocal :
+STRUCT
+	AsynchFault					: BOOL;
+	AsynchFaultReactionComplete	: BOOL;
+	Attention					: BOOL;
+	CycleAuto					: BOOL;
+	CycleFaulted				: BOOL;
+	CycleManual					: BOOL;
+	CycleReset					: BOOL;
+	ManualCycleRequested		: BOOL;
+	ManualCycleDone				: BOOL;
+	OKToStop					: BOOL;
+	SingleStepInhibit			: BOOL;
+	IgnoreSingleStep			: BOOL;
+	FirstEntry					: BOOL;
+	LongFaultState				: BOOL;
+	CycleAutoFallingEdge		: F_TRIG;
+	CycleResetFallingEdge		: F_TRIG;
+	CycleManualFallingEdge		: F_TRIG;
+	State						: DINT;
+	NextState					: DINT;
+	LastAutoState				: DINT;
+	ReEntryState				: DINT;
+	FaultedState				: DINT;
+	FaultNumber					: DINT;
+	LocalFaultID				: DINT;
+	FullFaultID					: DINT;
+	tmrState					: TON;
+	tmrFault					: TON;
+	StateTimePreset				: TIME;
+	FaultTimePreset				: TIME;
+	FaultTimeLong				: TIME;
+	FaultTimeShort				: TIME;
+	FaultText					: T_MaxString;
+	FaultAltText				: T_MaxString;
+	FaultData					: StatsFault;
+	MsgText						: T_MaxString;
+	AltMsgText					: T_MaxString;
+	MsgArray					: ARRAY [0..99] OF GeneralMessage;
+	HMIMsg						: HMIMessage;
+	StateTimeStamp				: StateTimeStamp;
+	CurrentTime					: TimeStamp;
+	Name						: STRING(30);
+	AltName						: STRING(30);
+	pStateTraceBuffer			: POINTER TO TraceFIFOBuffer;
+	pStateTraceFifo				: POINTER TO FIFO_StateTrace;
+	pStats						: POINTER TO Component_Stats;
+END_STRUCT
+END_TYPE]]></Declaration>
+  </DUT>
+</TcPlcObject>

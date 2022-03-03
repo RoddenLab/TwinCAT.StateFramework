@@ -1,0 +1,37 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.9">
+  <POU Name="F_AddMessage" Id="{57825879-dd46-4c12-a392-0ad38417e32d}" SpecialFunc="None">
+    <Declaration><![CDATA[FUNCTION F_AddMessage : BOOL
+VAR_IN_OUT
+	Station	: Station;
+END_VAR
+
+VAR_INPUT
+	Text		: T_MaxString;
+	AltText		: T_MaxString;
+	Color		: DINT;
+	Channel		: DINT;
+END_VAR
+
+VAR
+	HMIMessage		: HMIMessage;
+END_VAR]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[// Construct HMI Message
+HMIMessage.Text 	:= Text;
+HMIMessage.AltText 	:= AltText;
+HMIMessage.Color 	:= Color;
+HMIMessage.Channel 	:= Channel;
+
+// Load HMI Message to Station FIFO
+Station.HMIMessageFIFO.LOAD(pFIFO := ADR(Station.HMIMessageBuffer), in := HMIMessage);]]></ST>
+    </Implementation>
+    <LineIds Name="F_AddMessage">
+      <LineId Id="76" Count="0" />
+      <LineId Id="55" Count="3" />
+      <LineId Id="77" Count="0" />
+      <LineId Id="60" Count="0" />
+      <LineId Id="7" Count="0" />
+    </LineIds>
+  </POU>
+</TcPlcObject>

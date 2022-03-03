@@ -1,0 +1,37 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.9">
+  <POU Name="LEFTBigString" Id="{456ff1e8-0d9b-43ac-84b1-5e799c58b8bf}" SpecialFunc="None">
+    <Declaration><![CDATA[FUNCTION LEFTBigString : BOOL
+
+	VAR_INPUT
+	pInputString: POINTER TO BYTE;
+	SizeOfInputString: UINT;
+	SizeToCopy: UINT;
+	pOutputString: POINTER TO BYTE;
+	SizeOfOutputString: UINT;
+END_VAR
+
+VAR
+	i: INT;
+	pOutputStringNull: POINTER TO BYTE;
+END_VAR]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[(* Make sure output string is big enough to hold the characters *)
+IF SizeOfOutputString < SizeToCopy THEN
+	RETURN;
+END_IF
+
+(* Copy bytes from input string to output string *)
+MEMCPY(pOutputString, pInputString, SizeToCopy);
+
+(* Append null character to end of output string *)
+pOutputStringNull := (pOutputString + UINT_TO_DINT(SizeToCopy));
+pOutputStringNull^ := 0;
+LEFTBigString := TRUE;]]></ST>
+    </Implementation>
+    <LineIds Name="LEFTBigString">
+      <LineId Id="21" Count="10" />
+      <LineId Id="7" Count="0" />
+    </LineIds>
+  </POU>
+</TcPlcObject>

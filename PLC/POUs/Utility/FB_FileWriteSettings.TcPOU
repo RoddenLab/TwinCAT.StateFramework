@@ -1,0 +1,109 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.9">
+  <POU Name="FB_FileWriteSettings" Id="{dc61019c-7eb7-4922-9677-d776a656e8a1}" SpecialFunc="None">
+    <Declaration><![CDATA[FUNCTION_BLOCK FB_FileWriteSettings
+VAR_INPUT
+	DataToWrite		: BYTE;
+	SizeOfData		: DINT;
+	FileName		: T_MaxString; (* file path and name *)
+	bExecute: BOOL; (* rising edge starts fb execution *)
+END_VAR
+
+VAR_OUTPUT
+	bError: BOOL;
+	bDone: BOOL;
+END_VAR
+
+VAR
+	nErrId: UDINT;
+	bBusy: BOOL;
+	fbFileOpen: FB_FileOpen;
+	fbFileClose: FB_FileClose;
+	fbFileWrite: FB_FileWrite;
+
+	hFile: UINT := 0; (* file handle of the file *)
+
+	Step: DWORD;
+	RisingEdge: R_TRIG;
+END_VAR]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[
+	fbFileOpen(bExecute := FALSE);
+	fbFileOpen(sNetId := '',
+			sPathName := FileName,
+			nMode := FOPEN_MODEWRITE OR FOPEN_MODEBINARY,
+			ePath := PATH_GENERIC,
+			tTimeout := T#2s,
+			bExecute := TRUE);
+	Step := Step + 1;
+
+	4:
+	fbFileOpen(bExecute := FALSE);
+	IF (NOT fbFileOpen.bBusy) THEN
+		IF fbFileOpen.bError THEN
+			nErrId := fbFileOpen.nErrId;
+			bError := TRUE;
+			Step := 50;
+		ELSE
+			hFile := fbFileOpen.hFile;
+			Step := 7;
+		END_IF
+	END_IF
+
+	7:(*write data to file*)
+	fbFileWrite(bExecute := FALSE);
+	fbFileWrite(sNetId := '',
+			hFile := hFile,
+			pWriteBuff := pDataToWrite,
+			cbWriteLen := SizeOfData,
+			bExecute := TRUE,
+			tTimeout := T#2S);
+	Step := Step + 1;
+
+	8:
+	fbFileWrite(bExecute := FALSE);
+	IF (NOT fbFileWrite.bBusy) THEN
+		IF fbFileWrite.bError THEN
+			nErrId := fbFileWrite.nErrId;
+			bError := TRUE;
+			Step := 50;
+		ELSE
+			Step := 50; (*cleanup: close the file *)
+		END_IF
+	END_IF
+
+	30:(* close the file *)
+	fbFileClose(bExecute := FALSE);
+	fbFileClose(sNetId := '',
+			hFile := hFile,
+			bExecute := TRUE,
+			tTimeout := T#2S);
+	Step := Step + 1;
+
+	31:
+	fbFileClose(bExecute := FALSE);
+	IF (NOT fbFileClose.bBusy) THEN
+		IF fbFileClose.bError THEN
+			nErrId := fbFileClose.nErrId;
+			bError := TRUE;
+		END_IF
+		Step := 50;
+		hFile := 0;
+	END_IF
+
+	50: (*error or ready => cleanup*)
+	IF (hFile <> 0) THEN
+		Step := 30; (* close the destination file*)
+	ELSE
+		Step := 0; (* ready *)
+		bBusy := FALSE;
+	END_IF
+
+END_CASE]]></ST>
+    </Implementation>
+    <LineIds Name="FB_FileWriteSettings">
+      <LineId Id="58" Count="71" />
+      <LineId Id="9" Count="0" />
+    </LineIds>
+  </POU>
+</TcPlcObject>

@@ -1,0 +1,165 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.9">
+  <POU Name="FIFO_StatsEvent" Id="{5b4c5b6e-553e-4a28-9221-f54772f04c88}" SpecialFunc="None">
+    <Declaration><![CDATA[FUNCTION_BLOCK FIFO_StatsEvent
+VAR_INPUT
+	Overwrite	: BOOL;								// Flag to Overwrite FIFO Elements (when filled)
+	pFIFO		: POINTER TO StatsEventFIFOBuffer;	// Pointer to FIFO Memory
+END_VAR
+
+VAR_OUTPUT
+	Error		: BOOL;								// Flag Indicating Error with FIFO
+	Count		: DINT;								// Count of Elements Within FIFO
+	Full		: BOOL;								// Flag Indicating FIFO Full
+END_VAR
+
+VAR
+	Head		: UDINT;							// Index of Head Element (Newest)
+	Tail		: UDINT;							// Index of Tail Element (Oldest)
+END_VAR]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[]]></ST>
+    </Implementation>
+    <Action Name="INIT" Id="{6f404b0c-17b6-4a6b-8ef8-9d5ae8b2024a}">
+      <Implementation>
+        <ST><![CDATA[// Clear Buffer and Output Data
+MEMSET(ADR(pFIFO^.Buffer), 0, SIZEOF(pFIFO^.Buffer));
+
+// Reset Count / Indicies
+Count 	:= 0;
+Head 	:= 0;
+Tail 	:= 0;
+
+// Reset Flags
+Full 	:= FALSE;
+Error 	:= FALSE;]]></ST>
+      </Implementation>
+    </Action>
+    <Method Name="LOAD" Id="{2f5ed48a-f288-40cf-817e-0efb6b5474d6}">
+      <Declaration><![CDATA[METHOD LOAD : BOOL
+VAR_INPUT
+	Input	: StatsEvent;
+END_VAR
+]]></Declaration>
+      <Implementation>
+        <ST><![CDATA[// Set Success Flag
+Error := FALSE;
+LOAD := TRUE;
+
+// Check if FIFO Has Room (or Overwrite Enabled)
+IF (Full AND Overwrite) OR NOT Full THEN
+	
+	// Set Head Element to Input Value
+	pFIFO^.Buffer[Head] := Input;
+	
+	// Iterate Head Index
+	Head := Head + 1;
+	
+	// Check if Head at Maximum Value, Rollover
+	IF Head = pFIFO^.Size THEN
+		Head := 0;
+	END_IF
+	
+	// If FIFO Full, Iterate Tail
+	IF Full THEN
+		Tail := Tail + 1;
+		
+		// If Tail at Maximum Value, Rollover
+		IF Tail = pFIFO^.Size THEN
+			Tail := 0;
+		END_IF
+		
+	// Otherwise Update Count
+	ELSE
+		Count := Count + 1;
+	END_IF
+	
+// Otherwise, Flag Failure (Value Appended to Full FIFO)
+ELSE
+	Error := TRUE;
+	LOAD := FALSE;
+	
+END_IF
+
+Full := Head = Tail;]]></ST>
+      </Implementation>
+    </Method>
+    <Method Name="PEEK" Id="{cfda8041-10c9-4ee0-8bb2-f17d47121853}">
+      <Declaration><![CDATA[METHOD PEEK : StatsEvent
+]]></Declaration>
+      <Implementation>
+        <ST><![CDATA[// Reset Error Flag
+Error := FALSE;
+
+// Check if FIFO Full or Tail
+IF Count > 0 THEN
+	PEEK := pFIFO^.Buffer[Tail];
+	
+// Otherwise, Flag Error (FIFO is Empty)
+ELSE
+	Error := TRUE;
+END_IF]]></ST>
+      </Implementation>
+    </Method>
+    <Method Name="UNLOAD" Id="{24b43d64-5739-4349-8825-1696adf364f6}">
+      <Declaration><![CDATA[METHOD UNLOAD : StatsEvent
+]]></Declaration>
+      <Implementation>
+        <ST><![CDATA[// Reset Error Flag
+Error := FALSE;
+
+// Check if FIFO Has Elements
+IF Count > 0 THEN
+	
+	// Fetch Oldest Value from FIFO
+	UNLOAD := pFIFO^.Buffer[Tail];
+	
+	// Clear FIFO Position
+	pFIFO^.Buffer[Tail] := 0; 
+	
+	// Update Oldest Value Index
+	Tail := Tail + 1;
+	
+	// Update Element Count
+	Count := Count - 1;
+	
+	// Check for Rollover
+	IF Tail = pFIFO^.Size THEN
+		Tail := 0;
+	END_IF
+	
+	// Reset Full Flag
+	Full := FALSE;
+	
+// Otherwise, Flag Error (FIFO is Empty)
+ELSE
+	Error 	:= TRUE;
+	UNLOAD := 0;
+END_IF]]></ST>
+      </Implementation>
+    </Method>
+    <LineIds Name="FIFO_StatsEvent">
+      <LineId Id="9" Count="0" />
+    </LineIds>
+    <LineIds Name="FIFO_StatsEvent.INIT">
+      <LineId Id="10" Count="9" />
+      <LineId Id="1" Count="0" />
+    </LineIds>
+    <LineIds Name="FIFO_StatsEvent.LOAD">
+      <LineId Id="48" Count="1" />
+      <LineId Id="86" Count="0" />
+      <LineId Id="50" Count="31" />
+      <LineId Id="85" Count="0" />
+      <LineId Id="82" Count="2" />
+      <LineId Id="5" Count="0" />
+    </LineIds>
+    <LineIds Name="FIFO_StatsEvent.PEEK">
+      <LineId Id="17" Count="9" />
+      <LineId Id="5" Count="0" />
+    </LineIds>
+    <LineIds Name="FIFO_StatsEvent.UNLOAD">
+      <LineId Id="37" Count="29" />
+      <LineId Id="5" Count="0" />
+    </LineIds>
+  </POU>
+</TcPlcObject>

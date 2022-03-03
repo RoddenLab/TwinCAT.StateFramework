@@ -1,0 +1,259 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.9">
+  <POU Name="FB_Framework" Id="{bd03484d-2db2-41d7-96f4-187da9c40320}" SpecialFunc="None">
+    <Declaration><![CDATA[FUNCTION_BLOCK FB_Framework
+VAR_INPUT
+	ComponentIDRecord	: ComponentIdentifier;	// Information to Identify Component
+END_VAR
+
+VAR_IN_OUT
+	Local				: FrameworkLocal;		// Framework Local Structure Reference
+	Station				: Station;				// Station Reference
+END_VAR
+
+VAR
+	FirstScan			: BOOL;
+	ActiveStationID		: DINT;
+	Message				: GeneralMessage;
+END_VAR]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[// Initialize Framework Local Fields
+IF FirstScan THEN
+	FirstScan := FALSE;
+	Local.State := 9999;
+	Local.NextState := 5000;
+	Local.FaultedState := 0;
+	Local.ReEntryState := 0;
+	Local.LastAutoState := 0;
+	Local.FaultNumber := 0;
+END_IF
+
+(****************************************************************************
+* Framework Post-Sequence Logic, DO NOT modify this section *
+*****************************************************************************)
+
+(****************************************************************************
+* State Timeout Fault Logic *
+*****************************************************************************)
+// Set the State Fault Timer to Preset 
+Local.tmrFault(PT := Local.FaultTimePreset);
+
+// If Component in Auto, Reset, or Manual, Fault Enabled
+IF Local.CycleAuto OR Local.CycleReset OR Local.CycleManual THEN
+	// If Component OK to Stop or Single Stepping, Fault Disabled
+	IF NOT Local.OKToStop AND NOT Station.SingleStep THEN
+		// If State Stuck for Duration, Trigger Fault
+		Local.tmrFault(IN := Local.NextState = Local.State);
+	ELSE
+		Local.tmrFault(IN := FALSE);
+	END_IF
+ELSE
+	Local.tmrFault(IN := FALSE);
+END_IF
+
+// Unlatch Fault Condition When Directed by Station
+IF Station.UnlatchFaults THEN
+	Local.CycleFaulted := FALSE;
+	Local.FaultNumber := 0;
+END_IF
+
+// Check if Fault Condition Present
+IF Local.FaultNumber > 0 THEN
+	
+	// If Component not Faulted, Trigger Fault Condition
+	IF NOT Local.CycleFaulted THEN
+		Local.CycleFaulted := TRUE;
+	
+		// Check if Fault Occured in Sync with State Machine
+		// Set Faulted State/FaultID Accordingly
+		IF NOT Local.AsynchFault OR Local.AsynchFaultReactionComplete THEN
+			Local.FaultedState := Local.State;
+			Local.LocalFaultID := Local.FaultedState * 10 + Local.FaultNumber; // Faulted State Used in Identifier
+		ELSE
+			Local.FaultedState := 0;
+			Local.LocalFaultID := Local.FaultNumber; // No Faulted State Included (Async == Global in this case)
+		END_IF
+		
+		// Set Full Fault ID (Includes Component ID)
+		Local.FullFaultID := ComponentIDRecord.ID * 100000 + Local.LocalFaultID;
+		Local.FaultData.FaultID := Local.FullFaultID;
+		
+		// Fetch Message for Fault Condition
+		Message := F_FindMessage(Local.MsgArray, Local.FaultedState, Local.FaultNumber);
+		
+		// Set Local Fault Message Text
+		Local.MsgText := 'Fault: ';
+		Local.MsgText := CONCAT(Local.MsgText, DINT_TO_STRING(Local.FaultData.FaultID));
+		Local.MsgText := CONCAT(Local.MsgText, ' ');
+		Local.MsgText := CONCAT(Local.MsgText, Local.Name);
+		Local.MsgText := CONCAT(Local.MsgText, ' - ');
+		Local.MsgText := CONCAT(Local.MsgText, Message.Text);
+		
+		// Set Local Alt Fault Message Text
+		Local.AltMsgText := 'AltFault: ';
+		Local.AltMsgText := CONCAT(Local.AltMsgText, DINT_TO_STRING(Local.FaultData.FaultID));
+		Local.AltMsgText := CONCAT(Local.AltMsgText, ' ');
+		Local.AltMsgText := CONCAT(Local.AltMsgText, Local.AltName);
+		Local.AltMsgText := CONCAT(Local.MsgText, ' - ');
+		Local.AltMsgText := CONCAT(Local.AltMsgText, Message.AltText);
+		
+		// Add Message to Station Buffer
+		F_AddMessage(ADR(Station), Local.MsgText, Local.AltMsgText, eColor.Red, eChannel.Fault);
+		
+		// Check if Component Fault Already Active
+		// Set Station First Fault to Current Fault if Not Active
+		IF Station.FirstFault.FaultID = 0 THEN
+			Station.FirstFault 					:= Local.FaultData;
+			Station.FirstFault.StationID 		:= Station.StationID;
+			Station.FirstFault.StringData[0] 	:= Local.MsgText;
+			Station.FirstFault.StringData[1] 	:= Local.AltMsgText;
+			Station.FirstFault.StringData[2] 	:= Local.FaultData.StringData[2];
+			Station.FirstFault.Data 			:= Local.FaultData.Data;
+		END_IF
+	END_IF
+END_IF
+
+
+// If Cycle Faulted, Load Fault to FIFO
+IF Local.CycleFaulted THEN
+	Station.FaultedFIFO.LOAD(pFIFO := ADR(Station.FaultedFIFOBuffer), In := ComponentIDRecord);
+END_IF
+
+// If Cycle Manual, Load Manual to FIFO
+IF Local.CycleManual THEN
+	Station.CycleManualFIFO.LOAD(pFIFO := ADR(Station.CycleManualFIFOBuffer), in := ComponentIDRecord);
+END_IF
+
+// If Attention Flagged, Load to Station FIFO
+IF Local.Attention THEN
+	Station.AttentionRequiredFIFO.LOAD(pFIFO := ADR(Station.AttentionRequiredFIFOBuffer), in := ComponentIDRecord);
+END_IF
+
+// If Not OK to Stop, Load to Station FIFO
+IF NOT Local.OKToStop AND NOT Local.CycleFaulted THEN
+	Station.NotOKtoStopFIFO.LOAD(pFIFO := ADR(Station.NotOKtoStopFIFOBuffer), in := ComponentIDRecord);
+END_IF
+
+
+(***************************************************************************
+* Framework Pre-Sequence Logic, DO NOT modify this section *
+****************************************************************************)
+
+// Set Cycle Auto if Station in Auto and Component Not Faulted
+Local.CycleAuto := Station.CycleAuto AND NOT Local.CycleFaulted;
+
+// Set Cycle Reset if Station in Reset and Component Not Faulted
+Local.CycleReset := Station.CycleReset AND NOT Local.CycleFaulted;
+
+// Set Cycle Manual if Component Requesting Manual and Station Not Faulted
+Local.CycleManual := Local.ManualCycleRequested AND NOT Local.ManualCycleDone AND NOT Station.CycleFaulted;
+
+// Set Single Step Mode if Station in Single Step (not Advancing) and Component Enabled
+Local.SingleStepInhibit := Station.SingleStep AND NOT Station.StepAdvance AND NOT Local.IgnoreSingleStep;
+
+
+
+(*On the falling edge of CycleAuto, grab the current state as LastAutoState.
+Also, set the default ReEntryState to the LastAutoState so that we pick back up where we left off after a simple cycle stop / cycle start.
+Set State to 5000, the Idle state.
+Note that we block the capture of LastAutoState and setting of ReEntryState if we are currently in states 5000 or 5001.
+This is to avoid overwriting these values in the rare case that an AsynchFault occurs in the same scans that we are
+transitioning out of 5000, or while in 5001.*)
+Local.CycleAutoFallingEdge(CLK:=Local.CycleAuto);
+IF Local.CycleAutoFallingEdge.Q THEN
+	IF Local.State <> 5000 AND Local.State <> 5001 THEN
+		Local.LastAutoState := Local.State;
+		Local.ReEntryState := Local.LastAutoState;
+	END_IF
+	Local.NextState := 5000;
+END_IF
+
+// On Cycle Reset Falling Edge, Set State to 5000 (Idle)
+Local.CycleResetFallingEdge(CLK := Local.CycleReset);
+IF Local.CycleResetFallingEdge.Q THEN
+	Local.NextState := 5000;
+END_IF
+
+// On Manual Cycle Falling Edge, Set State to 5000
+Local.CycleManualFallingEdge(Clk:=Local.CycleManual);
+IF Local.CycleManualFallingEdge.Q THEN
+	Local.NextState := 5000;
+END_IF
+
+// On State Transition
+IF Local.NextState <> Local.State THEN
+	// Set First Entry Flag
+	Local.FirstEntry := TRUE;
+	
+	// Set State Equal to Next State (Update)
+	Local.State := Local.NextState;
+	
+	// Update Current Time
+	Local.CurrentTime := gCurrentTime;
+	
+	// Set Data for State Trace Buffer
+	Local.StateTimeStamp.ID := ComponentIDRecord.ID;
+	Local.StateTimeStamp.State := Local.State;
+	Local.StateTimeStamp.TimeHi := Local.CurrentTime.CurrentValue.dwHighPart;
+	Local.StateTimeStamp.TimeLo:= Local.CurrentTime.CurrentValue.dwLowPart;
+	
+	// Add Entry to State Trace Buffer
+	Local.pStateTraceFifo^.LOAD(pFIFO := Local.pStateTraceBuffer, IN := Local.StateTimeStamp);
+	
+ELSE
+	// Reset First Entry Flag
+	Local.FirstEntry := FALSE;
+	
+END_IF
+
+// State Idle Timer
+Local.tmrState(
+	IN := Local.NextState = Local.State,
+	PT := Local.StateTimePreset);
+
+// Reset OK to Stop Condition
+Local.OKToStop := FALSE;
+]]></ST>
+    </Implementation>
+    <LineIds Name="FB_Framework">
+      <LineId Id="478" Count="0" />
+      <LineId Id="258" Count="0" />
+      <LineId Id="476" Count="0" />
+      <LineId Id="259" Count="80" />
+      <LineId Id="439" Count="0" />
+      <LineId Id="340" Count="47" />
+      <LineId Id="390" Count="16" />
+      <LineId Id="440" Count="0" />
+      <LineId Id="407" Count="0" />
+      <LineId Id="409" Count="3" />
+      <LineId Id="441" Count="0" />
+      <LineId Id="413" Count="0" />
+      <LineId Id="415" Count="3" />
+      <LineId Id="442" Count="0" />
+      <LineId Id="419" Count="1" />
+      <LineId Id="449" Count="0" />
+      <LineId Id="421" Count="0" />
+      <LineId Id="452" Count="0" />
+      <LineId Id="450" Count="0" />
+      <LineId Id="423" Count="0" />
+      <LineId Id="453" Count="0" />
+      <LineId Id="451" Count="0" />
+      <LineId Id="425" Count="0" />
+      <LineId Id="454" Count="1" />
+      <LineId Id="426" Count="3" />
+      <LineId Id="456" Count="1" />
+      <LineId Id="430" Count="0" />
+      <LineId Id="459" Count="0" />
+      <LineId Id="431" Count="0" />
+      <LineId Id="458" Count="0" />
+      <LineId Id="432" Count="0" />
+      <LineId Id="461" Count="0" />
+      <LineId Id="434" Count="0" />
+      <LineId Id="444" Count="2" />
+      <LineId Id="448" Count="0" />
+      <LineId Id="447" Count="0" />
+      <LineId Id="435" Count="2" />
+      <LineId Id="218" Count="0" />
+    </LineIds>
+  </POU>
+</TcPlcObject>

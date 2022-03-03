@@ -1,0 +1,41 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.9">
+  <POU Name="F_SendEvent" Id="{12d18f17-aa0f-416e-b681-8ce260ed3d31}" SpecialFunc="None">
+    <Declaration><![CDATA[FUNCTION F_SendEvent : BOOL
+
+VAR_INPUT
+	Event			: StatsEvent;
+END_VAR
+
+VAR_IN_OUT
+	StatsFIFO		: FIFO_StatsEvent;
+	Buffer			: StatsEventFIFOBuffer;
+END_VAR
+
+VAR
+	TempEvent		: StatsEvent;
+END_VAR
+
+VAR_EXTERNAL
+	gCurrentTime	: TimeStamp;	// Global System Time Variable
+END_VAR]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[// Use Temp Event, Update TimeStamp
+TempEvent := Event;
+TempEvent.TimeStamp := gCurrentTime;
+
+// Load Event to Stats FIFO
+StatsFIFO(pFIFO := ADR(Buffer));
+StatsFIFO.LOAD(Input := TempEvent);]]></ST>
+    </Implementation>
+    <LineIds Name="F_SendEvent">
+      <LineId Id="50" Count="0" />
+      <LineId Id="47" Count="0" />
+      <LineId Id="49" Count="0" />
+      <LineId Id="38" Count="0" />
+      <LineId Id="37" Count="0" />
+      <LineId Id="55" Count="0" />
+      <LineId Id="18" Count="0" />
+    </LineIds>
+  </POU>
+</TcPlcObject>

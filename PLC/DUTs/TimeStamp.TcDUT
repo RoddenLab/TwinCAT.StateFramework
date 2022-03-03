@@ -1,0 +1,11 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.9">
+  <DUT Name="TimeStamp" Id="{a4d1721d-c2e9-4396-8d83-dde9d369ef0c}">
+    <Declaration><![CDATA[TYPE TimeStamp :
+STRUCT
+	CurrentValue	: T_ULarge_Integer;
+	DateTime		: TIMESTRUCT;
+END_STRUCT
+END_TYPE]]></Declaration>
+  </DUT>
+</TcPlcObject>

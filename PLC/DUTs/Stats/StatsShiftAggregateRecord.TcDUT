@@ -1,0 +1,25 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.9">
+  <DUT Name="StatsShiftAggregateRecord" Id="{a54ccccf-2521-45d8-91a9-157c2a6883aa}">
+    <Declaration><![CDATA[TYPE StatsShiftAggregateRecord :
+STRUCT
+	AggregateData: StatsAggregateRecord;
+	Shift: DINT;
+	ShiftStartTimeStamp: TimeStamp;
+	AvailableTime: LREAL;
+	NetAvailableTime: LREAL;
+	TotalDownTime: LREAL;
+	PlannedDownTime: LREAL;
+	UnplannedDownTime: LREAL;
+	OperatingTime: LREAL;
+	EquipmentAvailability: LREAL;
+	TotalParts: DINT;
+	PerformanceEfficiency: LREAL;
+	QualityRate: LREAL;
+	OverallEquipmentEffectiveness: LREAL;
+	CycleTimeAvgSum: LREAL;
+	CycleTimeAvgCnt: DINT;
+END_STRUCT
+END_TYPE]]></Declaration>
+  </DUT>
+</TcPlcObject>

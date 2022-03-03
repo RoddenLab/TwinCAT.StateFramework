@@ -1,0 +1,31 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.9">
+  <DUT Name="StatsConstants" Id="{cc2fb7b2-071a-4d68-871f-e6e0a59dcfc2}">
+    <Declaration><![CDATA[TYPE StatsConstants :
+STRUCT
+	Aggregate: DINT := 1;
+
+	OperatorStop: DINT := 100;
+	MachineStop: DINT := 101;
+	Working: DINT := 102;
+	Bypass: DINT := 103;
+	Blocked: DINT := 104;
+	Starved: DINT := 105;
+	Faulted: DINT := 106;
+	FaultAcknowledge: DINT := 107;
+	Empty: DINT := 108;
+	Retry: DINT := 109;
+	Mastering: DINT := 110;
+
+	Failure: DINT := 200;
+	Good: DINT := 201;
+	FirstTimeGood: DINT := 202;
+	FirstTimeStart: DINT := 203;
+	Initialize: DINT := 204;
+
+	PartChange: DINT := 300;
+	CycleTime: DINT := 301;
+END_STRUCT
+END_TYPE]]></Declaration>
+  </DUT>
+</TcPlcObject>

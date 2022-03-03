@@ -1,0 +1,62 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.9">
+  <POU Name="F_GetTimeStamp" Id="{83557e2c-006f-4ccd-a1eb-a1eb60a920c5}" SpecialFunc="None">
+    <Declaration><![CDATA[FUNCTION F_GetTimeStamp : TimeStamp
+VAR
+	fbGetTime		: GETSYSTEMTIME;	// Function Block to Fetch System Time
+	TimeStamp		: T_FileTime;		// Time Stamp Structure
+	CurrentTime		: TIMESTRUCT;		// Time Structure (from TwinCAT FB)
+	Time64			: T_ULarge_Integer;	// 64-Bit Large Integer Time
+	TimeShift		: LREAL;			// Amount for Time Zone Offset Shift 
+END_VAR
+
+VAR_EXTERNAL
+	gTimeZoneOffset	: DINT;				// Global Time Zone Offset Setting
+END_VAR]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[// Trigger TwinCAT Function Block
+fbGetTime(
+	timeLoDW => Time64.dwLowPart, 
+	timeHiDW => Time64.dwHighPart);
+
+// Correct for Timezone Offset
+TimeShift := DINT_TO_LREAL(ABS(gTimeZoneOffset)) (*hours*) * DINT_TO_LREAL(3600) (*seconds*) * DINT_TO_LREAL(10000000) (*100ns*);
+
+IF gTimeZoneOffset < 0 THEN
+	Time64 := UInt64Sub64(Time64, LREAL_TO_UINT64(TimeShift));
+ELSE
+	Time64 := UInt64Add64(Time64, LREAL_TO_UINT64(TimeShift));
+END_IF
+
+// Unpack Large Integer Time
+TimeStamp.dwLowDateTime  := Time64.dwLowPart;
+TimeStamp.dwHighDateTime := Time64.dwHighPart;
+
+// Unpack TimeStamp to Time Structure
+CurrentTime := FILETIME_TO_SYSTEMTIME(TimeStamp);
+
+// Set Output Time Stamp Accordingly
+F_GetTimeStamp.CurrentValue.dwHighPart := TimeStamp.dwHighDateTime;
+F_GetTimeStamp.CurrentValue.dwLowPart  := TimeStamp.dwLowDateTime;
+F_GetTimeStamp.DateTime := CurrentTime;]]></ST>
+    </Implementation>
+    <LineIds Name="F_GetTimeStamp">
+      <LineId Id="42" Count="0" />
+      <LineId Id="21" Count="0" />
+      <LineId Id="40" Count="1" />
+      <LineId Id="22" Count="1" />
+      <LineId Id="26" Count="0" />
+      <LineId Id="43" Count="0" />
+      <LineId Id="27" Count="4" />
+      <LineId Id="60" Count="0" />
+      <LineId Id="32" Count="2" />
+      <LineId Id="61" Count="0" />
+      <LineId Id="44" Count="0" />
+      <LineId Id="35" Count="0" />
+      <LineId Id="62" Count="0" />
+      <LineId Id="45" Count="0" />
+      <LineId Id="36" Count="1" />
+      <LineId Id="7" Count="0" />
+    </LineIds>
+  </POU>
+</TcPlcObject>

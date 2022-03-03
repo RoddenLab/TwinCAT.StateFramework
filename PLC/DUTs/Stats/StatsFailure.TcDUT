@@ -1,0 +1,13 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.9">
+  <DUT Name="StatsFailure" Id="{b0bded46-b8be-4ea0-bc58-a0af8295d0b4}">
+    <Declaration><![CDATA[TYPE StatsFailure :
+STRUCT
+	TimeStamp: TimeStamp;
+	StationID: DINT;
+	FailureID: DINT;
+	Parameters: STRING;
+END_STRUCT
+END_TYPE]]></Declaration>
+  </DUT>
+</TcPlcObject>

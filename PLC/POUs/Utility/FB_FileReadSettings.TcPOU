@@ -1,0 +1,130 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.9">
+  <POU Name="FB_FileReadSettings" Id="{c6dbe5fa-dd1f-41cc-8f0b-95460b93b3a2}" SpecialFunc="None">
+    <Declaration><![CDATA[FUNCTION_BLOCK FB_FileReadSettings
+VAR_INPUT
+	pReadData: POINTER TO BYTE;
+	SizeOfData: DINT;
+	FileName: T_MaxString; (* file path and name *)
+	bExecute: BOOL; (* rising edge starts fb execution *)
+END_VAR
+
+VAR_OUTPUT
+	bError: BOOL;
+	bDone: BOOL;
+END_VAR
+
+VAR
+	nErrId: UDINT;
+	bBusy: BOOL;
+	fbFileOpen: FB_FileOpen;
+	fbFileClose: FB_FileClose;
+	fbFileRead: FB_FileRead;
+
+	hFile: UINT	:= 0; (* file handle of the file *)
+
+	Step: DWORD;
+	RisingEdge: R_TRIG;
+
+	cbReadLength: UDINT := 0;
+END_VAR]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[
+CASE Step OF
+	
+	0: (* do nothing *)
+	;
+
+	1: (* open file *)
+	
+	fbFileOpen(bExecute := FALSE);
+	fbFileOpen(sNetId := '',
+		sPathName := FileName,
+		nMode := FOPEN_MODEREAD OR FOPEN_MODEBINARY,
+		ePath := PATH_GENERIC,
+		tTimeout := T#2s,
+		bExecute := TRUE );
+		Step := Step + 1;
+
+	2:
+	fbFileOpen(bExecute := FALSE);
+	IF (NOT fbFileOpen.bBusy) THEN
+		IF fbFileOpen.bError THEN
+			nErrId := fbFileOpen.nErrId;
+			bError := TRUE;
+			Step := 50;
+		ELSE
+			hFile := fbFileOpen.hFile;
+			Step := 5;
+		END_IF
+	END_IF
+
+	5: (*read data from source file*)
+	cbReadLength := 0;
+	fbFileRead(bExecute := FALSE);
+	fbFileRead(sNetId := '',
+			hFile := hFile,
+			pReadBuff := pReadData,
+			cbReadLen := SizeOfData,
+			bExecute := TRUE,
+			tTimeout := T#2S);
+	Step := Step + 1;
+
+	6:
+	fbFileRead(bExecute := FALSE);
+	IF (NOT fbFileRead.bBusy) THEN
+		IF fbFileRead.bError THEN
+			nErrId := fbFileRead.nErrId;
+			bError := TRUE;
+			Step := 50;
+		ELSIF fbFileRead.cbRead <> SizeOfData THEN
+			nErrId := fbFileRead.nErrId;
+			bError := TRUE;
+			Step := 50;
+		ELSE
+			cbReadLength := fbFileRead.cbRead;
+			Step := 50;
+		END_IF
+	END_IF
+
+
+	30: (* close the file *)
+	fbFileClose(bExecute := FALSE);
+	fbFileClose(sNetId := '',
+			hFile := hFile,
+			bExecute := TRUE,
+			tTimeout := T#2S);
+	Step := Step + 1;
+
+	31:
+	fbFileClose(bExecute := FALSE);
+	IF (NOT fbFileClose.bBusy) THEN
+		IF fbFileClose.bError THEN
+			nErrId := fbFileClose.nErrId;
+			bError := TRUE;
+		END_IF
+		Step := 50;
+		hFile := 0;
+	END_IF
+
+
+	50: (*error or ready => cleanup*)
+	IF hFile <> 0 THEN
+		Step := 30; (* close the file*)
+	ELSE
+		Step := 0;	(* ready *)
+		bBusy := FALSE;
+	END_IF
+
+END_CASE]]></ST>
+    </Implementation>
+    <LineIds Name="FB_FileReadSettings">
+      <LineId Id="36" Count="1" />
+      <LineId Id="147" Count="0" />
+      <LineId Id="38" Count="3" />
+      <LineId Id="148" Count="0" />
+      <LineId Id="42" Count="78" />
+      <LineId Id="9" Count="0" />
+    </LineIds>
+  </POU>
+</TcPlcObject>

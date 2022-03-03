@@ -1,0 +1,10 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.9">
+  <GVL Name="Global_Variables" Id="{5725dc71-9437-4faa-b9ac-8413153f35a5}">
+    <Declaration><![CDATA[VAR_GLOBAL
+	gTimeZoneOffset	: DINT;			// Time Zone Offset from UTC
+	gCurrentTime	: TimeStamp;	// Current Time for Station
+END_VAR
+]]></Declaration>
+  </GVL>
+</TcPlcObject>

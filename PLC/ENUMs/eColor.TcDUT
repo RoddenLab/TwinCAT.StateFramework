@@ -1,0 +1,19 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.9">
+  <DUT Name="eColor" Id="{0006b02e-c45f-46a1-931f-d4d6b49806fd}">
+    <Declaration><![CDATA[{attribute 'qualified_only'}
+{attribute 'strict'}
+TYPE eColor :
+(
+	Black 	:= 16#000000,	// Black RGB Code
+	Red	 	:= 16#FF0000,	// Red RGB Code
+	Green 	:= 16#00FF00,	// Green RGB Codde
+	Blue 	:= 16#0000FF,	// Blue RGB Codee
+	Grey 	:= 16#F2F2F2,	// Gray RGB Code
+	Yellow 	:= 16#FFFF00,	// Yellow RGB Code
+	White 	:= 16#FFFFFF	// White RGB Code
+) DINT := Black;
+END_TYPE
+]]></Declaration>
+  </DUT>
+</TcPlcObject>

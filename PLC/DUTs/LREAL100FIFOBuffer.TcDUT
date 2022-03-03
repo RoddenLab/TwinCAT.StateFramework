@@ -1,0 +1,11 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.9">
+  <DUT Name="LREAL100FIFOBuffer" Id="{aa95bb0f-6b65-40bb-aa15-b7039915cbf0}">
+    <Declaration><![CDATA[TYPE LREAL100FIFOBuffer :
+STRUCT
+	Size: UDINT := 100;
+	Buffer: ARRAY [0..99] OF LREAL;
+END_STRUCT
+END_TYPE]]></Declaration>
+  </DUT>
+</TcPlcObject>

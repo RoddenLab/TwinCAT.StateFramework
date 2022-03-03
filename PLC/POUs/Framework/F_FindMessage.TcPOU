@@ -1,0 +1,47 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.9">
+  <POU Name="F_FindMessage" Id="{85c85be8-083e-4f6f-b8f4-e50baf20955b}" SpecialFunc="None">
+    <Declaration><![CDATA[// Function to Retrieve Message from Provided Buffer Mapped to the Provided State/ID Combination
+FUNCTION F_FindMessage : GeneralMessage
+
+VAR_INPUT
+	MessageArray	: ARRAY [0..99] OF GeneralMessage;	// Array of Messages
+	State			: DINT;								// State Reference 
+	ID				: DINT;								// Fault ID Reference
+END_VAR
+
+VAR
+	Message			: GeneralMessage;					// Temporary Message Buffer
+	Index			: DINT;								// Index for Array Search
+	Length			: DINT;								// Number of Array Elements
+END_VAR]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[// Get Length of Message Array
+Length := SIZEOF(MessageArray) / SIZEOF(Message);
+
+// Set Message Text to Defaults
+Message.Text 	:= '**No message text**';
+Message.AltText := '**No alt message text**';
+
+// Search Message Array for Fault Message
+FOR Index := 0 TO (length - 1) DO
+	// If Message ID Matches State ID, Set Message Buffer to Array Element
+	IF MessageArray[Index].Id = (State * 10 + ID) THEN
+		Message := MessageArray[Index];
+		EXIT;
+	END_IF
+END_FOR
+
+// Set Output to Message Buffer
+F_FindMessage := Message;]]></ST>
+    </Implementation>
+    <LineIds Name="F_FindMessage">
+      <LineId Id="65" Count="8" />
+      <LineId Id="82" Count="0" />
+      <LineId Id="74" Count="4" />
+      <LineId Id="83" Count="0" />
+      <LineId Id="79" Count="0" />
+      <LineId Id="7" Count="0" />
+    </LineIds>
+  </POU>
+</TcPlcObject>

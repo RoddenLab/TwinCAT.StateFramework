@@ -1,0 +1,16 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.9">
+  <DUT Name="Framework" Id="{0debce16-e9dd-49e5-9595-c1dd4525d6b4}">
+    <Declaration><![CDATA[TYPE Framework :
+STRUCT
+	ComponentIDRecord	: ComponentIdentifier;	// Component Identifier
+	Behavior			: DINT;
+	OnScan				: BOOL;
+	ResetStart			: BOOL;
+	ResetDone			: BOOL;
+	FullInitRequired	: BOOL;
+	EnableStateTrace	: BOOL;
+END_STRUCT
+END_TYPE]]></Declaration>
+  </DUT>
+</TcPlcObject>

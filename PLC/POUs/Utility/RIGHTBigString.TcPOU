@@ -1,0 +1,60 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.9">
+  <POU Name="RIGHTBigString" Id="{a31034dd-cd85-44a1-94f0-4822f721fe38}" SpecialFunc="None">
+    <Declaration><![CDATA[FUNCTION RIGHTBigString : BOOL
+VAR_INPUT
+	pInputString: POINTER TO BYTE;
+	SizeOfInputString: UINT;
+	SizeToCopy: UINT;
+	pOutputString: POINTER TO BYTE;
+	SizeOfOutputString: UINT;
+END_VAR
+
+VAR
+	i: INT;
+	pInputStringNull: POINTER TO BYTE;
+	pOutputStringNull: POINTER TO BYTE;
+	NumberOfInputStringCharacters: DINT;
+END_VAR]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[(* Make sure output string is big enough to hold the characters *)
+IF SizeOfOutputString < SizeToCopy THEN
+	RETURN;
+END_IF
+
+(* Find address of null character for input string *)
+pInputStringNull := pInputString;
+FOR i := 0 TO SizeOfInputString DO
+	IF pInputStringNull^ = 0 THEN
+		EXIT;
+	END_IF
+	pInputStringNull := pInputStringNull + 1;
+END_FOR
+
+(* Check to see if there are enough characters in input string, otherwise copy them all *)
+NumberOfInputStringCharacters := pInputStringNull - pInputString;
+IF NumberOfInputStringCharacters < UINT_TO_DINT(SizeToCopy) THEN
+	(* Copy bytes from input string to output string *)
+	MEMCPY(pOutputString, pInputStringNull - NumberOfInputStringCharacters, NumberOfInputStringCharacters);
+
+	(* Append null character to end of output string *)
+	pOutputStringNull := (pOutputString + NumberOfInputStringCharacters);
+	pOutputStringNull^ := 0;
+	RETURN;
+END_IF
+
+(* Copy bytes from input string to output string *)
+MEMCPY(pOutputString, pInputStringNull - UINT_TO_DINT(SizeToCopy), SizeToCopy);
+
+(* Append null character to end of output string *)
+pOutputStringNull := (pOutputString + UINT_TO_DINT(SizeToCopy));
+pOutputStringNull^ := 0;
+
+RIGHTBigString := TRUE;]]></ST>
+    </Implementation>
+    <LineIds Name="RIGHTBigString">
+      <LineId Id="22" Count="32" />
+      <LineId Id="7" Count="0" />
+    </LineIds>
+  </POU>
+</TcPlcObject>
