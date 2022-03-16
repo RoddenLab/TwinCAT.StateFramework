@@ -3,11 +3,10 @@
   <DUT Name="StateTimeStamp" Id="{37043554-7926-468f-9b0e-2a2649e50372}">
     <Declaration><![CDATA[TYPE StateTimeStamp :
 STRUCT
-	Station: DINT;
-	ID: DINT;
-	State: DINT;
-	TimeLo: UDINT;
-	TimeHi: UDINT;
+	Station		: DINT;	
+	ID			: DINT;
+	State		: DINT;
+	DateTime	: TIMESTRUCT;
 END_STRUCT
 END_TYPE]]></Declaration>
   </DUT>

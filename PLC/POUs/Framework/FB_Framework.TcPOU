@@ -4,28 +4,27 @@
     <Declaration><![CDATA[FUNCTION_BLOCK FB_Framework
 VAR_INPUT
 	ComponentIDRecord	: ComponentIdentifier;	// Information to Identify Component
+	CurrentTime			: TimeStamp;			// Current System Time
 END_VAR
 
 VAR_IN_OUT
 	Local				: FrameworkLocal;		// Framework Local Structure Reference
-	Station				: Station;				// Station Reference
+	Station				: Station;				// Station Object Reference
 END_VAR
 
 VAR
-	FirstScan			: BOOL;
-	ActiveStationID		: DINT;
-	Message				: GeneralMessage;
+	Message				: GeneralMessage;		// Fault Message Memory Buffer
+	HMIMessage			: HMIMessage;			// HMI Message Memory Buffer		
 END_VAR]]></Declaration>
     <Implementation>
       <ST><![CDATA[// Initialize Framework Local Fields
-IF FirstScan THEN
-	FirstScan := FALSE;
-	Local.State := 9999;
-	Local.NextState := 5000;
-	Local.FaultedState := 0;
-	Local.ReEntryState := 0;
+IF Station.FirstScan THEN
+	Local.State 		:= 9999;
+	Local.NextState 	:= 5000;
+	Local.FaultedState 	:= 0;
+	Local.ReEntryState 	:= 0;
 	Local.LastAutoState := 0;
-	Local.FaultNumber := 0;
+	Local.FaultNumber 	:= 0;
 END_IF
 
 (****************************************************************************
@@ -98,7 +97,11 @@ IF Local.FaultNumber > 0 THEN
 		Local.AltMsgText := CONCAT(Local.AltMsgText, Message.AltText);
 		
 		// Add Message to Station Buffer
-		F_AddMessage(ADR(Station), Local.MsgText, Local.AltMsgText, eColor.Red, eChannel.Fault);
+		HMIMessage.Text		:= Message.Text;
+		HMIMessage.AltText 	:= Message.AltText;
+		HMIMessage.Channel	:= eChannel.Fault;
+		HMIMessage.Color	:= eColor.Red;
+		Station.HMIMessageFIFO.LOAD(HMIMessage := HMIMessage);
 		
 		// Check if Component Fault Already Active
 		// Set Station First Fault to Current Fault if Not Active
@@ -189,13 +192,12 @@ IF Local.NextState <> Local.State THEN
 	Local.State := Local.NextState;
 	
 	// Update Current Time
-	Local.CurrentTime := gCurrentTime;
+	Local.CurrentTime := CurrentTime;
 	
 	// Set Data for State Trace Buffer
 	Local.StateTimeStamp.ID := ComponentIDRecord.ID;
 	Local.StateTimeStamp.State := Local.State;
-	Local.StateTimeStamp.TimeHi := Local.CurrentTime.CurrentValue.dwHighPart;
-	Local.StateTimeStamp.TimeLo:= Local.CurrentTime.CurrentValue.dwLowPart;
+	Local.StateTimeStamp.DateTime := Local.CurrentTime;
 	
 	// Add Entry to State Trace Buffer
 	Local.pStateTraceFifo^.LOAD(pFIFO := Local.pStateTraceBuffer, IN := Local.StateTimeStamp);
@@ -217,9 +219,12 @@ Local.OKToStop := FALSE;
     </Implementation>
     <LineIds Name="FB_Framework">
       <LineId Id="478" Count="0" />
-      <LineId Id="258" Count="0" />
-      <LineId Id="476" Count="0" />
-      <LineId Id="259" Count="80" />
+      <LineId Id="258" Count="78" />
+      <LineId Id="497" Count="0" />
+      <LineId Id="496" Count="0" />
+      <LineId Id="498" Count="1" />
+      <LineId Id="494" Count="0" />
+      <LineId Id="338" Count="1" />
       <LineId Id="439" Count="0" />
       <LineId Id="340" Count="47" />
       <LineId Id="390" Count="16" />
@@ -240,7 +245,7 @@ Local.OKToStop := FALSE;
       <LineId Id="451" Count="0" />
       <LineId Id="425" Count="0" />
       <LineId Id="454" Count="1" />
-      <LineId Id="426" Count="3" />
+      <LineId Id="426" Count="2" />
       <LineId Id="456" Count="1" />
       <LineId Id="430" Count="0" />
       <LineId Id="459" Count="0" />

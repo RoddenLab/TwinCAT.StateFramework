@@ -3,108 +3,163 @@
   <POU Name="FIFO_StateTrace" Id="{3351118f-bba1-4382-8094-400dc0b7365c}" SpecialFunc="None">
     <Declaration><![CDATA[FUNCTION_BLOCK FIFO_StateTrace
 VAR_INPUT
-	Overwrite: BOOL;
-	pFIFO: POINTER TO TraceFIFOBuffer;
-	in: StateTimeStamp;
+	Overwrite	: BOOL;							// Flag to Overwrite FIFO Elements (when filled)
+	pFIFO		: POINTER TO TraceFIFOBuffer;	// Pointer to FIFO Memory
 END_VAR
 
 VAR_OUTPUT
-	Err		: BOOL;
-	Count	: DINT;
-	Full	: BOOL;
-	out		: StateTimeStamp;
+	Error		: BOOL;							// Flag Indicating Error with FIFO
+	Count		: DINT;							// Count of Elements Within FIFO
+	Full		: BOOL;							// Flag Indicating FIFO Full
 END_VAR
 
 VAR
-	Head: UDINT;
-	Tail: UDINT;
-	Idx: UDINT;
+	Head		: UDINT;						// Index of Head Element (Newest)
+	Tail		: UDINT;						// Index of Tail Element (Oldest)
 END_VAR]]></Declaration>
     <Implementation>
       <ST><![CDATA[]]></ST>
     </Implementation>
     <Action Name="INIT" Id="{56528050-524d-446c-8d5e-5ab96d2b6147}">
       <Implementation>
-        <ST><![CDATA[Idx := pFIFO^.Size * SIZEOF(in);
-MEMSET(ADR(pFIFO^.Buffer[0]), 0, Idx);
-MEMSET(ADR(in), 0, SIZEOF(in));
-MEMSET(ADR(out), 0, SIZEOF(out));
-Count := 0;
-Head := 0;
-Tail := 0;
-Full := 0;
-Err := 0;]]></ST>
+        <ST><![CDATA[// Clear Buffer and Output Data
+MEMSET(ADR(pFIFO^.Buffer), 0, SIZEOF(pFIFO^.Buffer));
+
+// Reset Count / Indicies
+Count 	:= 0;
+Head 	:= 0;
+Tail 	:= 0;
+
+// Reset Flags
+Full 	:= FALSE;
+Error 	:= FALSE;]]></ST>
       </Implementation>
     </Action>
-    <Action Name="LOAD" Id="{12824c8a-e31c-4631-a087-ec7f97e93a01}">
+    <Method Name="LOAD" Id="{4295ba78-5e0c-42c0-a74f-f7b856ffb2f1}">
+      <Declaration><![CDATA[METHOD LOAD : BOOL
+VAR_INPUT
+	Input	: StatsEvent;
+END_VAR
+]]></Declaration>
       <Implementation>
-        <ST><![CDATA[Err := 0;
+        <ST><![CDATA[// Set Success Flag
+Error := FALSE;
+LOAD := TRUE;
+
+// Check if FIFO Has Room (or Overwrite Enabled)
 IF (Full AND Overwrite) OR NOT Full THEN
-	pFIFO^.Buffer[Head] := in;
+	
+	// Set Head Element to Input Value
+	pFIFO^.Buffer[Head] := Input;
+	
+	// Iterate Head Index
 	Head := Head + 1;
+	
+	// Check if Head at Maximum Value, Rollover
 	IF Head = pFIFO^.Size THEN
 		Head := 0;
 	END_IF
+	
+	// If FIFO Full, Iterate Tail
 	IF Full THEN
 		Tail := Tail + 1;
+		
+		// If Tail at Maximum Value, Rollover
 		IF Tail = pFIFO^.Size THEN
 			Tail := 0;
 		END_IF
+		
+	// Otherwise Update Count
 	ELSE
 		Count := Count + 1;
 	END_IF
+	
+// Otherwise, Flag Failure (Value Appended to Full FIFO)
 ELSE
-	Err := 1;
+	Error := TRUE;
+	LOAD := FALSE;
+	
 END_IF
-Full := (Head = Tail);]]></ST>
+
+Full := Head = Tail;]]></ST>
       </Implementation>
-    </Action>
-    <Action Name="PEEK" Id="{83ba5d0a-95e4-4f9c-9db2-b00842a60543}">
+    </Method>
+    <Method Name="PEEK" Id="{d0110137-52f1-481a-9a0b-e81ed44d63e1}">
+      <Declaration><![CDATA[METHOD PEEK : StatsEvent
+]]></Declaration>
       <Implementation>
-        <ST><![CDATA[Err := 0;
-IF Full OR (Tail <> Head) THEN
-	out := pFIFO^.Buffer[Tail];
+        <ST><![CDATA[// Reset Error Flag
+Error := FALSE;
+
+// Check if FIFO Full or Tail
+IF Count > 0 THEN
+	PEEK := pFIFO^.Buffer[Tail];
+	
+// Otherwise, Flag Error (FIFO is Empty)
 ELSE
-	Err := 1; (*fifo is empty*)
+	Error := TRUE;
 END_IF]]></ST>
       </Implementation>
-    </Action>
-    <Action Name="UNLOAD" Id="{49c0b6ca-fa7d-4c3c-8de4-3e5aac03aa31}">
+    </Method>
+    <Method Name="UNLOAD" Id="{2ce9905e-ccbe-4445-8489-2173700b7ae8}">
+      <Declaration><![CDATA[METHOD UNLOAD : StatsEvent
+]]></Declaration>
       <Implementation>
-        <ST><![CDATA[Err := 0;
-IF NOT Full AND (Head = Tail) THEN
-	(*empty*)
-	Err := 1;
-ELSE
-	out := pFIFO^.Buffer[Tail];
-	MEMSET(ADR(pFIFO^.Buffer[Tail]), 0, SIZEOF (in));
+        <ST><![CDATA[// Reset Error Flag
+Error := FALSE;
+
+// Check if FIFO Has Elements
+IF Count > 0 THEN
+	
+	// Fetch Oldest Value from FIFO
+	UNLOAD := pFIFO^.Buffer[Tail];
+	
+	// Clear FIFO Position
+	pFIFO^.Buffer[Tail] := 0; 
+	
+	// Update Oldest Value Index
 	Tail := Tail + 1;
+	
+	// Update Element Count
 	Count := Count - 1;
+	
+	// Check for Rollover
 	IF Tail = pFIFO^.Size THEN
 		Tail := 0;
 	END_IF
-	Full := 0;
+	
+	// Reset Full Flag
+	Full := FALSE;
+	
+// Otherwise, Flag Error (FIFO is Empty)
+ELSE
+	Error 	:= TRUE;
+	UNLOAD := 0;
 END_IF]]></ST>
       </Implementation>
-    </Action>
+    </Method>
     <LineIds Name="FIFO_StateTrace">
       <LineId Id="9" Count="0" />
     </LineIds>
     <LineIds Name="FIFO_StateTrace.INIT">
-      <LineId Id="2" Count="7" />
+      <LineId Id="10" Count="9" />
       <LineId Id="1" Count="0" />
     </LineIds>
     <LineIds Name="FIFO_StateTrace.LOAD">
-      <LineId Id="2" Count="17" />
-      <LineId Id="1" Count="0" />
+      <LineId Id="48" Count="1" />
+      <LineId Id="86" Count="0" />
+      <LineId Id="50" Count="31" />
+      <LineId Id="85" Count="0" />
+      <LineId Id="82" Count="2" />
+      <LineId Id="5" Count="0" />
     </LineIds>
     <LineIds Name="FIFO_StateTrace.PEEK">
-      <LineId Id="2" Count="4" />
-      <LineId Id="1" Count="0" />
+      <LineId Id="17" Count="9" />
+      <LineId Id="5" Count="0" />
     </LineIds>
     <LineIds Name="FIFO_StateTrace.UNLOAD">
-      <LineId Id="2" Count="12" />
-      <LineId Id="1" Count="0" />
+      <LineId Id="37" Count="29" />
+      <LineId Id="5" Count="0" />
     </LineIds>
   </POU>
 </TcPlcObject>

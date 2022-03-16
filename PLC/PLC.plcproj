@@ -98,9 +98,6 @@
     <Compile Include="DUTs\Stats\StatsShiftAggregateRecord.TcDUT">
       <SubType>Code</SubType>
     </Compile>
-    <Compile Include="DUTs\TimeStamp.TcDUT">
-      <SubType>Code</SubType>
-    </Compile>
     <Compile Include="DUTs\TraceFIFOBuffer.TcDUT">
       <SubType>Code</SubType>
     </Compile>
@@ -113,26 +110,22 @@
     <Compile Include="ENUMs\eRxMode.TcDUT">
       <SubType>Code</SubType>
     </Compile>
-    <Compile Include="GVLs\Global_Variables.TcGVL">
-      <SubType>Code</SubType>
-      <LinkAlways>true</LinkAlways>
-    </Compile>
     <Compile Include="PlcTask.TcTTO">
       <SubType>Code</SubType>
     </Compile>
     <Compile Include="POUs\Framework\FB_Framework.TcPOU">
       <SubType>Code</SubType>
     </Compile>
-    <Compile Include="POUs\Framework\FIFO_HMIMessage.TcPOU">
+    <Compile Include="POUs\Framework\FB_StationState.TcPOU">
       <SubType>Code</SubType>
     </Compile>
-    <Compile Include="POUs\Framework\F_AddMessage.TcPOU">
+    <Compile Include="POUs\Framework\FIFO_HMIMessage.TcPOU">
       <SubType>Code</SubType>
     </Compile>
     <Compile Include="POUs\Framework\F_FindMessage.TcPOU">
       <SubType>Code</SubType>
     </Compile>
-    <Compile Include="POUs\MAIN.TcPOU">
+    <Compile Include="POUs\Framework\FB_StationControl.TcPOU">
       <SubType>Code</SubType>
     </Compile>
     <Compile Include="POUs\OEE\FIFO_StatsAggregate.TcPOU">
@@ -156,10 +149,16 @@
     <Compile Include="POUs\Serial Communication\FB_EL6001.TcPOU">
       <SubType>Code</SubType>
     </Compile>
+    <Compile Include="POUs\Serial Communication\FB_EL6002.TcPOU">
+      <SubType>Code</SubType>
+    </Compile>
     <Compile Include="POUs\State Trace\FIFO_StateTrace.TcPOU">
       <SubType>Code</SubType>
     </Compile>
     <Compile Include="POUs\TCP Communication\FB_TCPClient.TcPOU">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="POUs\Utility\FB_Blinker.TcPOU">
       <SubType>Code</SubType>
     </Compile>
     <Compile Include="POUs\Utility\FB_FileReadSettings.TcPOU">
@@ -193,7 +192,6 @@
   <ItemGroup>
     <Folder Include="DUTs" />
     <Folder Include="DUTs\Stats" />
-    <Folder Include="GVLs" />
     <Folder Include="ENUMs" />
     <Folder Include="POUs\Framework" />
     <Folder Include="POUs\Utility" />
@@ -201,7 +199,6 @@
     <Folder Include="POUs\State Trace" />
     <Folder Include="POUs\Serial Communication" />
     <Folder Include="POUs\OEE" />
-    <Folder Include="VISUs" />
     <Folder Include="POUs" />
   </ItemGroup>
   <ItemGroup>
@@ -294,7 +291,7 @@
                   <d n="SubKeys" t="Hashtable" />
                   <d n="Values" t="Hashtable" ckt="String" cvt="Boolean">
                     <v>bActive</v>
-                    <v>True</v>
+                    <v>False</v>
                   </d>
                 </o>
                 <v>28</v>

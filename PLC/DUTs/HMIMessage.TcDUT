@@ -3,10 +3,10 @@
   <DUT Name="HMIMessage" Id="{4d5d315b-a104-4365-9a4f-1c009095efa4}">
     <Declaration><![CDATA[TYPE HMIMessage :
 STRUCT
-	Channel	: DINT;
-	Color	: DINT;
-	Text	: T_MaxString;
-	AltText	: T_MaxString;
+	Channel	: eChannel;		// Channel for HMI Message
+	Color	: eColor;		// Color of HMI Message (Background)
+	Text	: T_MaxString;	// Text of HMI Message
+	AltText	: T_MaxString;	// Additional Text for HMI Message
 END_STRUCT
 END_TYPE]]></Declaration>
   </DUT>

@@ -1,0 +1,30 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.9">
+  <POU Name="FB_Blinker" Id="{70b8d01a-4607-4c4e-9200-cd61d90f7e6c}" SpecialFunc="None">
+    <Declaration><![CDATA[FUNCTION_BLOCK FB_Blinker
+VAR_INPUT
+	IN	: BOOL;
+	PT	: TIME;
+END_VAR
+VAR_OUTPUT
+	Q	: BOOL;
+END_VAR
+VAR
+	TON	: TON;
+	TOF	: TOF;
+END_VAR
+]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[TOF(IN := NOT TON.Q AND IN, PT := PT);
+TON(IN := IN AND TOF.Q, PT := PT);
+
+Q := TON.Q;]]></ST>
+    </Implementation>
+    <LineIds Name="FB_Blinker">
+      <LineId Id="9" Count="0" />
+      <LineId Id="15" Count="0" />
+      <LineId Id="30" Count="0" />
+      <LineId Id="17" Count="0" />
+    </LineIds>
+  </POU>
+</TcPlcObject>

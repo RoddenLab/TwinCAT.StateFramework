@@ -3,55 +3,57 @@
   <DUT Name="Station" Id="{292e64d6-2156-42c3-8a6b-38f2bcf75aa8}">
     <Declaration><![CDATA[TYPE Station :
 STRUCT
-	CycleAuto: BOOL;
-	CycleReset: BOOL;
-	CycleManual: BOOL;
-	CycleStopped: BOOL;
-	CycleFaulted: BOOL;
-	OKToStop: BOOL;
-	OKForManual: BOOL;
-	StopRequest: BOOL;
-	EmergencyStop: BOOL;
-	UnlatchFaults: BOOL;
-	FaultReset: BOOL;
-	FullInitRequired: BOOL;
-	ResetDone: BOOL;
-	SingleStep: BOOL;
-	StepAdvance: BOOL;
-	DryCycle: BOOL;
-	Attention: BOOL;
-	MachineStopRqst: BOOL;
+	FirstScan					: BOOL	:= TRUE;	// First Scan for PLC Startup
+	
+	CycleAuto					: BOOL;					// Flag Indicating 
+	CycleReset					: BOOL;
+	CycleManual					: BOOL;
+	CycleStopped				: BOOL;
+	CycleFaulted				: BOOL;
+	
+	OKToStart					: BOOL;					// Flag Indicating Station Readiness to Start Cycling
+	OKToStop					: BOOL;					// Flag Indicating Station Readiness to Stop Cycling
+	OKToReset					: BOOL;					// Flag Indicating Station Readiness to Reset Faults/Handshakes
+	OKForManual					: BOOL;					// Flag Indicating Station Readiness to Enter Manual Mode
+	
+	StopRequest					: BOOL;
+	EmergencyStop				: BOOL;
+	UnlatchFaults				: BOOL;
+	FaultReset					: BOOL;
+	StationResetRequired		: BOOL;					// Flag Indicating Full Station Reset Required
+	ResetDone					: BOOL;
+	SingleStep					: BOOL;
+	StepAdvance					: BOOL;
+	DryCycle					: BOOL;
+	Attention					: BOOL;
+	MachineStopRequest			: BOOL;
+	StationID					: DINT;					// Identifier for the Station
+	
+	FirstFault					: StatsFault;			
+	UpstreamStationID			: DINT;					// Upstream Station Identifier
+	DownstreamStationID			: DINT;					// Downstream Station Identifier
+	
+	StationMessage				: HMIBanner;
+	OperatorMessage				: HMIBanner;
+	b500msPulse					: BOOL;					// Global 500ms Boolean Pulse
 
-	hiCycleStart: BOOL;
-	hiCycleStop: BOOL;
-	hiFaultAck: BOOL;
-	hiFaultReset: BOOL;
-	hiStationReset: BOOL;
-	hiSingleStepOn: BOOL;
-	hiSingleStepOff: BOOL;
-	hiSingleStepAdvance: BOOL;
-	hiManualMode: BOOL;
-	hiLampTest: BOOL;
-	hoStationResetRequired: BOOL;
-
-	StationID: DINT;
-	FirstFault: StatsFault;
-	PreviousStationID: DINT;
-	NextStationID: DINT;
-	HMIMessageFIFO: FIFO_HMIMessage;
-	HMIMessageBuffer: HMIMessageBuffer;
-	StationMessage: HMIBanner;
-	OperatorMessage: HMIBanner;
-	b500msPulse: BOOL;
-
-	FaultedFIFO: FIFO_ID50;
-	FaultedFIFOBuffer: ID50FIFOBuffer;
-	NotOKtoStopFIFO: FIFO_ID50;
-	NotOKToStopFIFOBuffer: ID50FIFOBuffer;
-	AttentionRequiredFIFO: FIFO_ID50;
-	AttentionRequiredFIFOBuffer: ID50FIFOBuffer;
-	CycleManualFIFO: FIFO_ID50;
-	CycleManualFIFOBuffer: ID50FIFOBuffer;
+	FaultedFIFO					: FIFO_ID50;			// FIFO of Faulted Components
+	FaultedFIFOBuffer			: ID50FIFOBuffer;		// Faulted Component FIFO Memory
+	
+	NotOKtoStopFIFO				: FIFO_ID50;			// FIFO of Not OK to Stop Components
+	NotOKToStopFIFOBuffer		: ID50FIFOBuffer;		// Not OK to Stop FIFO Memory
+	
+	HMIMessageFIFO				: FIFO_HMIMessage;		// FIFO of HMI Messages
+	HMIMessageBuffer			: HMIMessageBuffer;		// HMI Message FIFO Memory
+	
+	AttentionRequiredFIFO		: FIFO_ID50;			// FIFO of Components Requiring Attention
+	AttentionRequiredFIFOBuffer	: ID50FIFOBuffer;		// Attention Request FIFO Memory
+	
+	CycleManualFIFO				: FIFO_ID50;
+	CycleManualFIFOBuffer		: ID50FIFOBuffer;
+	
+	StationStateTraceFifo		: FIFO_StateTrace;
+	StationStateTraceBuffer		: TraceFIFOBuffer;	
 END_STRUCT
 END_TYPE]]></Declaration>
   </DUT>

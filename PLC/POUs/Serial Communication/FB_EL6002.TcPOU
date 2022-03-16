@@ -1,0 +1,458 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.9">
+  <POU Name="FB_EL6002" Id="{88979638-b19b-4cb3-b4b7-159dbe121e2d}" SpecialFunc="None">
+    <Declaration><![CDATA[FUNCTION_BLOCK FB_EL6002
+VAR_INPUT
+	pTransmitBuffer	 	: POINTER TO ARRAY [0..cSerialArraySize-1] OF USINT;
+	TransmitLength 	 	: DINT;
+	pEOF				: POINTER TO ARRAY[0..11] OF USINT;
+	EOFLength			: DINT;
+	FixedMessageLength	: DINT;
+	pReceiveBuffer		: POINTER TO ARRAY [0..cSerialArraySize-1] OF USINT;
+	ReceiveData			: BOOL;
+	Initialize			: BOOL;
+	bVarSize			: BOOL;
+END_VAR
+
+VAR_IN_OUT
+	iRS232InData 	: ARRAY [0..21] OF SINT;
+	iRS232SW 		: UINT;
+	oRS232OutData 	: ARRAY [0..21] OF SINT;
+	oRS232CW 		: UINT;
+END_VAR
+
+VAR_OUTPUT
+	ReceiveLength		: DINT;
+	DataAvailable		: BOOL;
+	Transmitting		: BOOL;
+	InitializeComplete	: BOOL;
+	ErrorCode			: DINT;
+	Error				: BOOL;
+	EOFResult			: STRING(256);
+END_VAR
+
+VAR
+	TransmitState 		: DINT;
+	TransmitNextState	: DINT;
+	TransmitTimer	 	: TON;
+	state: DINT;
+	NextState: DINT;
+	FirstEntry: BOOL;
+	NoFault: BOOL;
+	LongFaultState:BOOL;
+	FaultTimer: TON;
+	FaultTimerDone:BOOL;
+	FaultTimerPreset:TIME;
+	FaultedState: DINT;
+	FaultNumber: DINT;
+	FaultText:STRING256;
+	FaultAltText:STRING256;
+	FaultMsg: FaultMessage;
+	LocalFaultID:DINT;
+	FullFaultID:DINT;
+	MsgText: STRING256;
+	AltMsgText:STRING256;
+	tmrState:TON;
+
+	LastSW:UINT;
+	InBuffer:ARRAY [0..cSerialArraySize-1] OF USINT;
+	TempBuffer:ARRAY[0..cSerialArraySize-1] OF USINT;
+	TempXBuffer:ARRAY[0..cSerialArraySize-1] OF USINT;
+	InBufferDataLength:DINT;
+	pInBuffer:POINTER TO STRING(cSerialArraySize);
+	OutBuffer:ARRAY [0..cSerialArraySize-1] OF USINT;
+	OutBufferDataLength:DINT;
+	DevInDataLength:DINT;
+	DevOutDataLength:DINT;
+	PreviousInMessageLength:DINT;
+	
+	GetCharNum:UINT;
+	SendCharNum:UINT;
+	TempCW:UINT;
+	Mode:DINT;
+	BitIndex :SINT;
+	EOFIndex:DINT;
+	EOFFound : BOOL;
+	Index:DINT;
+	SendIndex:DINT := 0;
+	FindState:DINT;
+	TransmitActive : BOOL;
+
+	rbTemp:DINT;
+	OutBufferDataLenth: BOOL;
+
+	TenpCwAfterShift: UINT;
+	
+	tmrReceive: TON;
+	
+END_VAR
+
+VAR CONSTANT
+	cDevBufferSize 		: DINT 	:= 22;
+	cEOF 				: DINT 	:= 1;
+	cFixedLength 		: DINT 	:= 2;
+	cContinuous 		: DINT 	:= 3;
+	cVarSize 			: DINT	:= 4;
+	cSerialArraySize	: UINT 	:= 2000;	// Calling moudle must have same sized array pointers passed in.
+END_VAR]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[// Modified by Roy Coffman 11-Jul-2017
+//   Changed Var_In   "pMessageEOF"  to just "pEOF"
+//   Changed Var_In   "MessageLength" to "FixedMessageLength"
+//   Added constant for internal buffer array sizes
+
+IF NextState <> state THEN
+	(*code: Log state change into buffer*)
+	FirstEntry := TRUE;
+	state := NextState;
+	tmrState(IN:=FALSE); (*clear timer if state changes*)
+ELSE
+	FirstEntry := FALSE;
+END_IF
+
+IF TransmitNextState <> TransmitState THEN
+	TransmitState := TransmitNextState;
+END_IF
+
+IF EOFLength > 0 THEN
+	Mode := cEOF;
+ELSIF FixedMessageLength > 0 THEN
+	Mode := cFixedLength;
+ELSIF bVarSize THEN
+	Mode := cVarSize;
+ELSE
+	Mode := cContinuous;
+END_IF
+
+rbTemp := SIZEOF(pReceiveBuffer^);
+
+(**********************
+* Receive Logic     *
+***********************)
+(* 1. The terminal indicates that there is new data in the process image by changing the state of the “Receive Request” bit SW.1.
+   2. The number of bytes received is written in “Input length” SW.7-15.
+   3. The controller acknowledges acceptance of the bytes by changing the state of “Receive request” SW.1. *)
+// Modified by Roy Coffman 03-Aug-2017
+//  Module appears to want ack to match req, not just change state... so set ack = req
+
+IF NOT Error THEN
+	IF (InBufferDataLength + 22) < cSerialArraySize THEN (*data will fit in buffer*)
+		IF (iRS232SW.1 XOR LastSW.1) THEN
+			GetCharNum := SHR(iRS232SW,8);  // Shift the input length, Bit7 - 15 to an INT
+			MEMCPY(ADR(InBuffer[InBufferDataLength]),ADR(iRS232InData),GetCharNum);
+			InBufferDataLength := InBufferDataLength + GetCharNum;
+			oRS232CW.1 := iRS232SW.1;
+		END_IF
+		//  Note: data analyzed for EOF in state 100 below.
+	ELSE
+		MEMSET(ADR(InBuffer),0,SIZEOF(InBuffer));
+		InBufferDataLength := 0;
+		Error := TRUE;
+		ErrorCode := 5;
+	END_IF	
+END_IF
+
+(**********************
+* Transmit Logic     *
+***********************)
+IF TransmitLength > 0 THEN
+	// Comment by Roy Coffman... the next mem copy seems wrong using some offset into the data being asked to be
+	//   written by the upper level comnponent.   Is the "OutBufferDataLength" suppose to be in the first argument?
+	//   This will function as long as OutBufferDataLength = 0 when this code is evaluated.
+	// MEMCPY(ADR(OutBuffer),ADR(pTransmitBuffer^[OutBufferDataLength]),DINT_TO_UDINT(TransmitLength)); // Copy transmit buffer into output buffer
+	// Made the change 1/5/21 JCG
+	MEMCPY(ADR(OutBuffer[OutBufferDataLength]),pTransmitBuffer,DINT_TO_UDINT(TransmitLength)); // Copy transmit buffer into output buffer
+	MEMSET(pTransmitBuffer,0,DINT_TO_UDINT(TransmitLength));  // Clear the transmit buffer
+	OutBufferDataLength := OutBufferDataLength + TransmitLength;  // Update the output length
+	TransmitLength := 0;
+END_IF
+
+(* 1. Set “Output length” to char count
+   2. Fill “Data Out 0” to “Data Out n” with user data
+   3. Change the state of “Transmit request”
+   4. The terminal acknowledges receipt of the data by changing the state of the “Transmit accepted” bit.  *)
+
+TransmitTimer(IN:=TransmitState = 10, PT:=T#1S);
+CASE TransmitState OF
+
+0:
+	IF NOT Initialize AND OutBufferDataLength > 0 THEN (*Have data to send*)
+		IF OutBufferDataLength  > 22 THEN
+			SendCharNum:=22;
+		ELSE
+			SendCharNum :=DINT_TO_UINT( OutBufferDataLength);
+		END_IF
+		MEMSET(ADR(oRS232OutData),0,22);  // Clear the output data
+		MEMCPY(ADR(oRS232OutData),ADR(OutBuffer[0]),SendCharNum); (*copy up to 22 chars to device*)
+		TempCW := SHL(SendCharNum,8);  // was 8 bit shift 1/5/21 JCG
+		TenpCwAfterShift := TempCW;
+		oRS232CW := UINT_TO_WORD(oRS232CW) OR UINT_TO_WORD(TempCW);
+		oRS232CW.0 := NOT(oRS232CW.0);
+		TransmitNextState:=10;
+		Transmitting := TRUE;
+	ELSE
+		Transmitting := FALSE;
+	END_IF
+
+10:
+	IF iRS232SW.0 XOR LastSW.0 THEN  // Cneck Transmit Accepted bit
+		LastSW.0 := iRS232SW.0;
+		TempCW := 255;
+		oRS232CW := UINT_TO_WORD(oRS232CW) AND UINT_TO_WORD(TempCW);  // Clear the Output Length field  Upper 8 bits
+		MEMSET(ADR(TempXBuffer),0,SIZEOF(TempXBuffer));  // Clear the temp buffer
+		MEMCPY(ADR(TempXBuffer[0]),ADR(OutBuffer[SendCharNum]),SIZEOF(OutBuffer)-SendCharNum);  // Copy the remaining chars from Out Buffer to temp
+		MEMSET(ADR(outbuffer),0,SIZEOF(outbuffer));  // Clear the Out Buffer
+		MEMCPY(ADR(OutBuffer),ADR(TempXBuffer),SIZEOF(TempXBuffer));  // Copy the temp back to out buffer
+		OutBufferDataLength := OutBufferDataLength - SendCharNum;  // Update the remaining data length
+		TransmitNextState := 0;
+	END_IF
+	IF TransmitTimer.Q THEN
+		Error:=TRUE;
+		ErrorCode:=4;
+		TransmitNextState := 20;
+	END_IF
+
+20:
+	(*Error*)
+	IF Initialize THEN
+		TransmitNextState := 0;
+	END_IF
+
+END_CASE
+
+
+(**********************
+* Sequence logic  *
+***********************)
+
+CASE state OF
+
+0:	(*Wait for command *)
+
+	IF Initialize THEN
+		NextState := 10;
+	ELSIF InBufferDataLength >0 AND NOT DataAvailable THEN  // Data available in the buffer
+		NextState := 100;
+	ELSIF ReceiveData THEN
+		NextState:=200;
+	END_IF
+
+10:	(*Initialize device
+   1. Set “Init request” to 1
+   2. The terminal confirms successful initialization by setting “Init accepted”
+   3. Reset “Init request”
+   4. The terminal sets “Init accepted” to 0. *)
+   
+	IF  FirstEntry THEN
+		Error:=0;
+		ErrorCode:=0;
+		oRS232CW.2 := 1;  // Init Device
+		tmrReceive(IN:=FALSE);
+	END_IF
+	tmrState(In:=TRUE, PT:=t#5s);
+	IF iRS232SW.2 THEN  // Init Accepted = on
+		// Set trnasmit req and receive ack to zero while initializing module
+		//   resets added by Roy Coffman 3-Sug-2017
+		oRS232CW.0 := 0;
+		oRS232CW.1 := 0;
+		oRS232CW.2 := 0;
+		NextState:=20;
+	END_IF
+
+	IF tmrState.Q THEN
+		(*error*)
+		Error:=1;
+		ErrorCode:=4;
+		oRS232CW.2 := 0;
+		NextState := 0;
+	END_IF
+
+20: 	(*wait for signal to go low*)
+
+	tmrState(In:=TRUE, PT:=t#5s);
+
+	IF NOT iRS232SW.2 THEN  // Init Accepted = off
+		NextState:=30;
+	END_IF
+
+	IF tmrState.Q THEN
+		(*error*)
+		Error:=1;
+		ErrorCode:=4;
+		NextState := 0;
+	END_IF
+
+30: 	(*clear data*)
+
+	IF  FirstEntry THEN
+		MEMSET( ADR(InBuffer),0,SIZEOF(InBuffer));
+		MEMSET(ADR(OutBuffer),0,SIZEOF(OutBuffer));
+		MEMSET(pTransmitBuffer,0,SIZEOF(pTransmitBuffer^));
+		MEMSET(pReceiveBuffer,0,SIZEOF(pReceiveBuffer^));
+		MEMSET(ADR(oRS232OutData), 0, SIZEOF(oRS232OutData));
+		MEMSET(ADR(oRS232CW), 0, SIZEOF(oRS232CW));
+		InBufferDataLength:=0;
+		OutBufferDataLength:=0;
+		SendIndex:=0;
+		SendCharNum:=0;
+		ErrorCode:=0;
+		Error:=0;
+		DataAvailable:=0;
+		InitializeComplete:=1;
+	END_IF
+	IF NOT Initialize THEN
+		InitializeComplete:=0;  // Finish the handshake
+		NextState:=0;
+	END_IF
+
+100:	(*Search for message*)
+
+	CASE Mode OF
+
+		cEOF:	(*search for eof*)
+			pInBuffer := ADR(InBuffer[0]); (*just for reference. Makes looking at data easier*)
+			IF NOT DataAvailable THEN
+				(*search buffer for EOF string*)
+				FindState:=0; (*index for counting successive matches to EOF*)
+				FOR index := 0 TO InBufferDataLength  + 1 DO
+					IF InBuffer[index] = pEOF^[FindState] THEN
+						(*match found*)
+						FindState := FindState + 1;
+						IF findState = EOFLength THEN
+							EOFIndex:=index - EOFLength +1;
+							EOFFound := TRUE;
+							EXIT;
+						END_IF
+					ELSE
+						IF FindState > 0 THEN
+							FindState:=0; (*reset counter and start looking for new match*)
+							IF InBuffer[index] = pEOF^[FindState] THEN (*must check current index for match to first element of EOF.*)
+								FindState:=1;
+							END_IF
+						END_IF
+					END_IF
+				END_FOR;
+			END_IF
+			IF EOFFound THEN (*message found*)
+				MEMCPY(pReceiveBuffer, ADR(InBuffer[0]),DINT_TO_UDINT(EOFIndex)); (*copy message up to but not including EOF into receive message*)
+				Index := EOFIndex + EOFLength;
+				ReceiveLength := EOFIndex ;
+				IF ((Index ) < InBufferDataLength) THEN
+					MEMSET(ADR(TempBuffer),0,SIZEOF(TempBuffer));
+					MEMCPY(ADR(TempBuffer[0]),ADR(InBuffer[index]),DINT_TO_UDINT(InBufferDataLength-Index));
+					MEMSET( ADR(InBuffer),0,SIZEOF(InBuffer));
+					InBufferDataLength := InBufferDataLength-Index;
+					MEMCPY(ADR(InBuffer[0]),ADR(TempBuffer[0]),DINT_TO_UDINT(InBufferDataLength));
+					InBufferDataLength := 0;
+				ELSE
+					MEMSET( ADR(InBuffer),0,SIZEOF(InBuffer));
+					InBufferDataLength := 0;
+				END_IF
+				EOFIndex := 0;
+				EOFFound := FALSE;
+				DataAvailable := 1;
+			END_IF
+
+			NextState := 0;
+
+		cFixedLength:		(*fixed receive lengh*)
+			IF NOT DataAvailable AND (InBufferDataLength >= FixedMessageLength) THEN
+				MEMCPY(pReceiveBuffer, ADR(InBuffer[0]),DINT_TO_UDINT(FixedMessageLength)); (*copy data to output *)
+				ReceiveLength := FixedMessageLength;
+				InBufferDataLength := InBufferDataLength - FixedMessageLength;
+				IF InBufferDataLength > 0 THEN
+					(*still have data*)
+					MEMCPY(ADR(TempBuffer[0]),ADR(InBuffer[FixedMessageLength]),DINT_TO_UDINT(InBufferDataLength));
+					MEMSET( ADR(InBuffer),0,SIZEOF(InBuffer));
+					MEMCPY(ADR(InBuffer[0]),ADR(TempBuffer[0]),DINT_TO_UDINT(InBufferDataLength));
+				ELSE
+					MEMSET( ADR(InBuffer),0,SIZEOF(InBuffer));
+					InBufferDataLength := 0;
+				END_IF
+				DataAvailable := 1;
+			END_IF
+			NextState := 0;
+
+		cContinuous:		(*continuous read*)
+			IF NOT DataAvailable AND (InBufferDataLength <> PreviousInMessageLength) THEN
+				PreviousInMessageLength := InBufferDataLength;
+			ELSIF NOT DataAvailable AND (InBufferDataLength = PreviousInMessageLength) AND (InBufferDataLength > 0) THEN
+				MEMCPY(pReceiveBuffer, ADR(InBuffer[0]),DINT_TO_UDINT(InBufferDataLength)); (*copy data to output *)
+				ReceiveLength := InBufferDataLength;
+				InBufferDataLength := 0;
+				MEMSET( ADR(InBuffer),0,SIZEOF(InBuffer));
+				DataAvailable := 1;
+			END_IF
+			NextState := 0;
+			
+		cVarSize:
+			tmrReceive(PT:=T#300MS);
+			IF NOT DataAvailable AND (InBufferDataLength <> PreviousInMessageLength) THEN
+				tmrReceive(IN:=FALSE);
+				PreviousInMessageLength := InBufferDataLength;
+				tmrReceive(IN:=TRUE);
+			ELSIF NOT DataAvailable AND (InBufferDataLength = PreviousInMessageLength) AND (InBufferDataLength > 0) AND tmrReceive.Q THEN
+				tmrReceive(IN:=FALSE);
+				MEMCPY(pReceiveBuffer, ADR(InBuffer[0]),DINT_TO_UDINT(InBufferDataLength)); (*copy data to output *)
+				ReceiveLength := InBufferDataLength;
+				InBufferDataLength := 0;
+				MEMSET( ADR(InBuffer),0,SIZEOF(InBuffer));
+				DataAvailable := 1;
+			END_IF
+			NextState := 0;
+ 
+		ELSE
+			(*Software error*)
+			Error:=1;
+			ErrorCode:=9;
+			NextState := 0;
+	END_CASE;
+
+200:	(*Message read, clear output*)
+
+	IF  FirstEntry THEN
+		DataAvailable:=0;
+		MEMSET(pReceiveBuffer,0,SIZEOF(pReceiveBuffer^));
+		ReceiveLength:=0;
+	END_IF
+	IF NOT ReceiveData THEN
+		NextState:=0;
+	END_IF
+
+END_CASE
+
+(*set output device bits*)
+LastSW := iRS232SW;]]></ST>
+    </Implementation>
+    <LineIds Name="FB_EL6002">
+      <LineId Id="102" Count="21" />
+      <LineId Id="540" Count="1" />
+      <LineId Id="124" Count="126" />
+      <LineId Id="548" Count="0" />
+      <LineId Id="251" Count="40" />
+      <LineId Id="654" Count="1" />
+      <LineId Id="292" Count="82" />
+      <LineId Id="760" Count="0" />
+      <LineId Id="762" Count="0" />
+      <LineId Id="764" Count="0" />
+      <LineId Id="766" Count="4" />
+      <LineId Id="758" Count="0" />
+      <LineId Id="375" Count="0" />
+      <LineId Id="494" Count="1" />
+      <LineId Id="547" Count="0" />
+      <LineId Id="496" Count="0" />
+      <LineId Id="544" Count="0" />
+      <LineId Id="538" Count="0" />
+      <LineId Id="546" Count="0" />
+      <LineId Id="500" Count="0" />
+      <LineId Id="545" Count="0" />
+      <LineId Id="524" Count="2" />
+      <LineId Id="549" Count="0" />
+      <LineId Id="551" Count="0" />
+      <LineId Id="504" Count="1" />
+      <LineId Id="498" Count="0" />
+      <LineId Id="376" Count="20" />
+      <LineId Id="9" Count="0" />
+    </LineIds>
+  </POU>
+</TcPlcObject>

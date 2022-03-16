@@ -3,8 +3,8 @@
   <DUT Name="HMIMessageBuffer" Id="{f8a7b5f1-de60-4847-a64b-95634c7465d6}">
     <Declaration><![CDATA[TYPE HMIMessageBuffer :
 STRUCT
-	Size: UDINT := 100;
-	Buffer: ARRAY [0..99] OF HMIMessage;
+	Size	: UDINT := 100;					// Array Size for HMI Message FIFO Buffer
+	Buffer	: ARRAY [0..99] OF HMIMessage;	// FIFO Buffer for HMI Messages 
 END_STRUCT
 END_TYPE]]></Declaration>
   </DUT>

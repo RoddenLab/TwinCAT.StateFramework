@@ -4,7 +4,7 @@
     <Declaration><![CDATA[TYPE Framework :
 STRUCT
 	ComponentIDRecord	: ComponentIdentifier;	// Component Identifier
-	Behavior			: DINT;
+	Behavior			: DINT;					// Component Behavior Modifier
 	OnScan				: BOOL;
 	ResetStart			: BOOL;
 	ResetDone			: BOOL;

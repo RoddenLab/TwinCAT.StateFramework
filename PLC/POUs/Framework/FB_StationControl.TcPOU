@@ -1,0 +1,293 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.9">
+  <POU Name="FB_StationControl" Id="{bb3d24d1-08a4-41f0-b987-b995cd327aea}" SpecialFunc="None">
+    <Declaration><![CDATA[FUNCTION_BLOCK FB_StationControl
+
+VAR
+	Blinker					: FB_Blinker;			// Global 500ms Blinker Function Block
+	FaultData				: StatsFault;			// Station Fault Data Statistics
+	StationFaultMessage		: HMIMessage;			// Station-Level HMI Message
+	tonAirSystemFaultDelay	: TON;					// TON Delay for Air System Fault
+	cmdMachineStop			: BOOL; 				// Command to Stop Machine Cycle
+	StationLevelFault		: BOOL;					// Flag for Station Level Fault
+	FaultNumber				: INT;					// Current Fault Number
+	HMIFaultMessage			: HMIMessage;			// HMI Banner Fault Message
+	WaitForFaultAck			: BOOL;
+	ProcessCompleteTON		: TON;			
+END_VAR;
+
+VAR_INPUT
+	EmergencyStopStatus		: BOOL;					// Status of Emergency Stop Input
+END_VAR
+
+VAR_OUTPUT
+	Station					: Station;
+END_VAR
+
+
+VAR_INPUT
+	hiCycleStart			: BOOL;
+	hiCycleStop				: BOOL;
+	hiManualMode			: BOOL;
+	hiEstopReset			: BOOL;
+	hiFaultAck				: BOOL;
+	hiFaultReset			: BOOL;
+	hiStationReset			: BOOL;
+	hiSingleStepOn			: BOOL;
+	hiSingleStepOff			: BOOL;
+	hiSingleStep			: BOOL;
+	hiDryCycle				: BOOL;
+END_VAR
+
+VAR_OUTPUT
+	hoOperatorMessage		: STRING;
+	hoStationStateMessage	: STRING;
+	hoFaultAlert			: BOOL;
+	hoOKToStart				: BOOL;
+	hoOKToStop				: BOOL;
+	hoOKToReset				: BOOL;
+END_VAR]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[// First Scan Initalization ////////////////////////////////////////////////////////////
+
+IF Station.FirstScan THEN
+	Station.FirstScan			:= FALSE;
+	FaultNumber 				:= 1;
+	StationFaultMessage.Text 	:= 'Fault: 1 - PLC First Scan';
+	StationFaultMessage.AltText := 'Fault: 1 - PLC First Scan';
+	StationFaultMessage.Channel	:= eChannel.FirstFault;
+	StationFaultMessage.Color	:= eColor.Red;
+	Station.StationID 			:= 10;
+END_IF;
+
+
+// Station Controls
+
+Station.CycleFaulted 	:= StationLevelFault OR Station.FaultedFIFO.Count > 0;
+Station.Attention 		:= Station.AttentionRequiredFIFO.Count > 0;
+
+ReadyForManual();
+ReadyForStart();
+ReadyForStop();
+ReadyForReset();
+
+StationState();
+SingleStep();
+
+
+// E-Stop Mode Control Logic ////////////////////////////////////////////////////////////
+
+Station.EmergencyStop := EmergencyStopStatus;
+
+IF Station.EmergencyStop THEN
+	IF Station.CycleAuto OR Station.CycleReset OR Station.CycleManual THEN
+		FaultNumber 				:= 2;
+		StationFaultMessage.Text 	:= 'Fault: 2 - Emergency Stop During Cycle';
+		StationFaultMessage.AltText := 'Fault: 2 - Emergency Stop During Cycle';
+		StationFaultMessage.Channel	:= eChannel.Fault;
+		StationFaultMessage.Color	:= eColor.Red;
+	END_IF;
+END_IF;
+
+
+// Station Level Fault Logic ////////////////////////////////////////////////////////////
+
+IF FaultNumber <> 0 AND NOT StationLevelFault THEN
+	StationLevelFault 					:= TRUE;
+	FaultData.FaultID 					:= FaultNumber;
+	Station.FirstFault 					:= FaultData;
+	Station.FirstFault.StationID 		:= Station.StationID;
+	Station.FirstFault.StringData[0] 	:= StationFaultMessage.Text;
+	Station.FirstFault.StringData[1] 	:= StationFaultMessage.AltText;
+	
+ELSIF Station.UnlatchFaults THEN
+	FaultNumber 		:= 0;
+	StationLevelFault 	:= FALSE;
+	MEMSET(ADR(FaultData), 0, SIZEOF(FaultData));
+	MEMSET(ADR(StationFaultMessage), 0, SIZEOF(StationFaultMessage));
+	MEMSET(ADR(Station.FirstFault), 0, SIZEOF(Station.FirstFault));
+	
+END_IF;
+
+
+// HMI Fault Message Logic
+
+Station.OperatorMessage.Text 	:= Station.FirstFault.StringData[0];
+Station.OperatorMessage.Color	:= eColor.Red;
+
+hoOperatorMessage := Station.FirstFault.StringData[0];
+
+
+// 500ms Station Blinker //////////////////////////////////////////////////////////////////
+
+Blinker(
+	IN 	:= TRUE, 
+	PT 	:= T#500MS,
+	Q	=> Station.b500msPulse);
+
+
+// Clear Status FIFO Buffers //////////////////////////////////////////////////////////////
+
+Station.AttentionRequiredFIFO.INIT(pFIFO := ADR(Station.AttentionRequiredFIFOBuffer));
+Station.NotOKtoStopFIFO.INIT(pFIFO := ADR(Station.NotOKToStopFIFOBuffer));
+Station.FaultedFIFO.INIT(pFIFO := ADR(Station.FaultedFIFOBuffer));
+Station.CycleManualFIFO.INIT(pFIFO := ADR(Station.CycleManualFIFOBuffer));
+
+// Reset Done
+
+Station.ResetDone := Stn10_10_Main.JRFramework.ResetDone 
+	AND Stn10_11_Robot.JRFramework.ResetDone 
+	AND Stn10_12_Aligner.JRFramework.ResetDone 
+	AND Stn10_13_Laser.JRFramework.ResetDone
+	AND Stn10_14_BottomCamera.JRFramework.ResetDone
+	AND Stn10_15_TopCamera.JRFramework.ResetDone
+	AND Stn10_16_SMIFPodLt.JRFramework.ResetDone
+	AND Stn10_17_SMIFPodRt.JRFramework.ResetDone;
+
+
+// Dry Cycle Enable / Disable Logic
+	
+IF hiDryCycle AND NOT Station.DryCycle THEN
+	hiDryCycle 			:= FALSE;
+	Station.DryCycle 	:= TRUE;
+	
+ELSIF hiDryCycle AND Station.DryCycle THEN
+	hiDryCycle 			:= FALSE;
+	Station.DryCycle 	:= FALSE;
+	
+END_IF
+
+
+// HMI Feedback ///////////////////////////////////////////////
+
+hoFaultAlert 	:= Station.b500msPulse AND Station.CycleFaulted;
+hoOKToStart 	:= OKToStart AND NOT Stn10_20_GEM.RemoteModeActive;
+hoOKToStop 		:= NOT Stn10_20_GEM.RemoteModeActive OR Station.CycleManual;
+hoOKToReset		:= OKToReset;
+	
+]]></ST>
+    </Implementation>
+    <Action Name="ReadyForManual" Id="{e3d4735d-409b-446d-9241-62840b589e61}">
+      <Implementation>
+        <ST><![CDATA[Station.OKForManual := NOT Station.CycleAuto 
+	AND NOT Station.CycleReset 
+	AND NOT Station.StationResetRequired
+	AND NOT Station.CycleFaulted
+	AND Stn10_11_Robot.APIOut.Connected 
+	AND Stn10_12_Aligner.APIOut.Connected
+	AND Stn10_13_Laser.APIOut.Connected
+	AND Stn10_14_BottomCamera.APIOut.Connected
+	AND Stn10_15_TopCamera.APIOut.Connected;
+]]></ST>
+      </Implementation>
+    </Action>
+    <Action Name="ReadyForReset" Id="{d1f798a0-f8d5-43f9-a052-f53887fdbf12}">
+      <Implementation>
+        <ST><![CDATA[OKToReset := NOT Station.EmergencyStop AND NOT Station.CycleManual;]]></ST>
+      </Implementation>
+    </Action>
+    <Action Name="ReadyForStart" Id="{accf6bf6-b60e-4c7e-9053-e232ac5b66c4}">
+      <Implementation>
+        <ST><![CDATA[OKToStart := NOT Station.EmergencyStop 
+	AND NOT Station.CycleFaulted
+	AND NOT Station.StationResetRequired 
+	AND NOT Station.CycleManual
+	AND NOT Station.CycleAuto
+	AND Stn10_11_Robot.APIOut.Connected 
+	AND Stn10_12_Aligner.APIOut.Connected
+	AND Stn10_13_Laser.APIOut.Connected
+	AND Stn10_14_BottomCamera.APIOut.Connected
+	AND Stn10_15_TopCamera.APIOut.Connected
+	AND (NOT F_CassetteEmpty(pMain^.CassetteA) 
+		OR NOT F_CassetteEmpty(pSMIFLeft^.Cassette) 
+		OR NOT F_CassetteEmpty(pSMIFRight^.Cassette) 
+		OR NOT F_CassetteEmpty(pMain^.CassetteB)
+		OR Stn10_16_SMIFPodLt.INSTALLED
+		OR Stn10_17_SMIFPodRt.INSTALLED)
+	AND (Stn10_16_SMIFPodLt.iLeftLoadPlusReady OR NOT Stn10_16_SMIFPodLt.INSTALLED)
+	AND (Stn10_17_SMIFPodRt.iRightLoadPlusReady OR NOT Stn10_17_SMIFPodRt.INSTALLED);
+]]></ST>
+      </Implementation>
+    </Action>
+    <Action Name="ReadyForStop" Id="{860d0dea-a8c3-402d-8e9c-5d8a226b6b19}">
+      <Implementation>
+        <ST><![CDATA[OKToStop := Station.NotOKtoStopFIFO.Count = 0;]]></ST>
+      </Implementation>
+    </Action>
+    <Action Name="SingleStep" Id="{d3d3d2ae-8c28-4e84-b668-005b2eafb64c}">
+      <Implementation>
+        <ST><![CDATA[IF hiSingleStepOn THEN
+	hiSingleStepOn 		:= FALSE;
+	Station.SingleStep 	:= TRUE;
+	
+ELSIF hiSingleStepOff OR hiStationReset THEN
+	hiSingleStepOff		:= FALSE;
+	hiStationReset		:= FALSE;
+	Station.SingleStep 	:= FALSE;
+	
+END_IF
+
+IF Station.SingleStep AND hiSingleStep THEN
+	hiSingleStep		:= FALSE;
+	Station.StepAdvance := TRUE;
+ELSE
+	Station.StepAdvance := FALSE;	
+END_IF]]></ST>
+      </Implementation>
+    </Action>
+    <LineIds Name="FB_StationControl">
+      <LineId Id="9957" Count="57" />
+      <LineId Id="10095" Count="0" />
+      <LineId Id="10015" Count="24" />
+      <LineId Id="10045" Count="17" />
+      <LineId Id="10097" Count="0" />
+      <LineId Id="10063" Count="2" />
+      <LineId Id="10096" Count="0" />
+      <LineId Id="10066" Count="0" />
+      <LineId Id="10072" Count="7" />
+      <LineId Id="10093" Count="0" />
+      <LineId Id="8490" Count="0" />
+    </LineIds>
+    <LineIds Name="FB_StationControl.ReadyForManual">
+      <LineId Id="20" Count="0" />
+      <LineId Id="26" Count="2" />
+      <LineId Id="22" Count="3" />
+      <LineId Id="21" Count="0" />
+      <LineId Id="15" Count="0" />
+    </LineIds>
+    <LineIds Name="FB_StationControl.ReadyForReset">
+      <LineId Id="1" Count="0" />
+    </LineIds>
+    <LineIds Name="FB_StationControl.ReadyForStart">
+      <LineId Id="37" Count="0" />
+      <LineId Id="64" Count="0" />
+      <LineId Id="68" Count="0" />
+      <LineId Id="65" Count="1" />
+      <LineId Id="60" Count="0" />
+      <LineId Id="63" Count="0" />
+      <LineId Id="59" Count="0" />
+      <LineId Id="61" Count="1" />
+      <LineId Id="67" Count="0" />
+      <LineId Id="70" Count="2" />
+      <LineId Id="76" Count="1" />
+      <LineId Id="73" Count="1" />
+      <LineId Id="16" Count="0" />
+    </LineIds>
+    <LineIds Name="FB_StationControl.ReadyForStop">
+      <LineId Id="1" Count="0" />
+    </LineIds>
+    <LineIds Name="FB_StationControl.SingleStep">
+      <LineId Id="2" Count="0" />
+      <LineId Id="10" Count="0" />
+      <LineId Id="3" Count="2" />
+      <LineId Id="11" Count="1" />
+      <LineId Id="6" Count="2" />
+      <LineId Id="13" Count="0" />
+      <LineId Id="9" Count="0" />
+      <LineId Id="19" Count="0" />
+      <LineId Id="14" Count="0" />
+      <LineId Id="17" Count="1" />
+      <LineId Id="15" Count="0" />
+    </LineIds>
+  </POU>
+</TcPlcObject>

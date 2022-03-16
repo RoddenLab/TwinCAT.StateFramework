@@ -1,0 +1,313 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.9">
+  <POU Name="FB_StationState" Id="{809b2946-1a40-4443-a4c2-bc4bb0101d0e}" SpecialFunc="None">
+    <Declaration><![CDATA[FUNCTION_BLOCK FB_StationState
+// Station State Commands
+VAR_INPUT
+	StationResetCommand		: BOOL;
+	FaultAcknowledgeCommand	: BOOL;
+	FaultResetCommand		: BOOL;
+	StationLevelFault		: BOOL;
+	CycleStartCommand		: BOOL;
+	CycleStopCommand		: BOOL;
+	ManualModeCommand		: BOOL;
+END_VAR
+
+// Configuration Inputs
+VAR_INPUT
+	SeperateAckAndReset		: BOOL;		// Configuration to Require Fault Acknowledge
+	ResetAfterManualMode	: BOOL;		// Configuration to Require Station Reset After Leaving Manual Mode
+END_VAR
+
+VAR_IN_OUT
+	Station					: Station;
+END_VAR
+
+VAR_OUTPUT
+	StationStateMessage		: T_MaxString;
+END_VAR
+
+VAR
+	State					: DINT;
+	NextState				: DINT;
+	FirstEntry				: BOOL;
+	WaitForFaultAck			: BOOL;
+	CurrentTime				: TIMESTRUCT;
+	ModeTimeStamp			: StateTimeStamp;
+END_VAR
+]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[// First Scan
+IF Station.FirstScan THEN
+	State 		:= 9999;
+	NextState 	:= 0;
+END_IF
+
+
+// Async Setting for Init Required Flag
+IF StationResetCommand THEN
+	Station.StationResetRequired := TRUE;
+END_IF;
+
+
+// Mode Control State Machine
+CASE State OF
+		
+	0:	// Faulted, Not Acknowledged
+	
+		StationStateMessage := 'Faulted, Not Acknowledged';
+	
+		IF FaultAcknowledgeCommand OR NOT SeperateAckAndReset THEN
+			FaultAcknowledgeCommand := FALSE;
+			NextState := 10;
+		END_IF;
+		
+	
+	10:	// Faulted, Acknowledged
+	
+		IF FirstEntry THEN
+			IF SeperateAckAndReset THEN
+				StationStateMessage := 'Fault Acknowledged';
+			END_IF;
+			WaitForFaultAck := TRUE;
+		END_IF;
+	
+		// Check if Station Ready for Reset
+		IF Station.OKToReset THEN
+			
+			IF WaitForFaultAck AND SeperateAckAndReset THEN
+				WaitForFaultAck := FALSE;
+				
+				IF Station.StationResetRequired THEN
+					StationStateMessage := 'Waiting for Station Reset';
+				ELSE
+					StationStateMessage := 'Waiting for Station or Fault Reset';
+				END_IF
+			END_IF;
+			
+			// Check if Station Reset Required
+			IF Station.StationResetRequired THEN
+				
+				// Station Reset Commanded
+				IF StationResetCommand THEN
+					StationResetCommand 		:= FALSE;
+					NextState 			:= 50;
+					Station.SingleStep	:= FALSE;
+				END_IF
+				
+				// Fault Reset - Reject
+				IF FaultResetCommand THEN
+					StationStateMessage := 'Station Reset Required'; 
+				END_IF
+				
+			ELSE
+				// Station Reset Commanded
+				IF StationResetCommand THEN
+					StationResetCommand 		:= FALSE;
+					NextState 			:= 50;
+					Station.SingleStep	:= FALSE;
+				END_IF;
+			
+				// Fault Reset Commanded
+				IF FaultResetCommand THEN
+					FaultResetCommand 			:= FALSE;
+					NextState  			:= 20;
+					Station.SingleStep	:= FALSE;
+				END_IF;
+			END_IF
+			
+		END_IF;
+		
+	
+	20	:	// Unlatch Faults, Fault Reset
+	
+		IF FirstEntry THEN
+			Station.UnlatchFaults := TRUE;
+			StationStateMessage := 'Unlatching Faults...';
+		END_IF;
+	
+		IF NOT Station.CycleFaulted AND NOT StationLevelFault THEN
+			NextState	:= 30;
+		END_IF;
+	
+		IF NextState <> State THEN
+			Station.UnlatchFaults := FALSE;
+		END_IF
+		
+		
+	30:	// Fault Reset
+	
+		// Command Component Reset 
+		IF FirstEntry THEN
+			Station.CycleReset 	:= TRUE;
+			StationStateMessage 		:= 'Resetting...';
+		END_IF;
+	
+		// Wait for Reset Complete
+		IF Station.ResetDone THEN
+			NextState := 100;
+		END_IF;
+		
+		// If Station Faults During Reset or Station Reset Commanded, Return to Faulted
+		IF Station.CycleFaulted OR StationResetCommand THEN
+			StationResetCommand 	:= FALSE;
+			NextState 		:= 0;
+		END_IF;
+		
+		// Reset Component Reset
+		IF NextState <> State THEN
+			Station.CycleReset := FALSE;
+		END_IF
+		
+	
+	50	:	// Unlatch Faults - Station Reset*)
+	
+		// Unlatch Component Faults
+		IF FirstEntry THEN
+			Station.UnlatchFaults 	:= TRUE;
+			StationStateMessage 			:= 'Unlatching Faults...';
+		END_IF;
+		
+		// Wait for Faults (and Station Faults) to Clear
+		IF NOT Station.CycleFaulted AND NOT StationLevelFault THEN
+			NextState 	:= 60;
+		END_IF;
+	
+		// Reset Fault Unlatch Command
+		IF NextState <> State THEN
+			Station.UnlatchFaults	:= FALSE;
+		END_IF
+		
+		
+	60	:	// Station Reset
+	
+		// Command Component Resets
+		IF FirstEntry THEN
+			Station.CycleReset 	:= TRUE;
+			StationStateMessage 		:= 'Resetting...';
+		END_IF;
+	
+		// Wait for Component Reset Complete
+		IF Station.ResetDone THEN
+			Station.StationResetRequired 	:= FALSE;
+			NextState 						:= 100;
+		END_IF;
+		
+		// If Fault During Reset, Return to Faulted State
+		IF Station.CycleFaulted THEN
+			NextState 	:= 0;
+		END_IF;
+		
+		// Reset Component Reset Command on Exit
+		IF NextState <> State THEN
+			Station.CycleReset := FALSE;
+		END_IF
+	
+		
+	100:	// Idle
+	
+		IF FirstEntry THEN
+			StationStateMessage := 'Idle';
+		END_IF
+	
+		// Cycle Start Commanded
+		IF CycleStartCommand AND Station.OKToStart THEN
+			CycleStartCommand	:= FALSE;
+			NextState 	:= 200;
+		END_IF
+	
+		// Manual Mode Commanded
+		IF ManualModeCommand AND Station.OKForManual THEN
+			ManualModeCommand	:= FALSE;
+			NextState	:= 300;
+		END_IF
+		
+		// In Case of Cycle Fault
+		IF Station.CycleFaulted THEN
+			NextState := 0;
+		END_IF;
+		
+		// Station Reset Commanded
+		IF StationResetCommand AND Station.OKToReset THEN
+			NextState := 60;
+		END_IF
+		
+	
+	200	:	// Running
+	
+		IF FirstEntry THEN
+			Station.CycleAuto 	:= TRUE;
+			StationStateMessage 		:= 'Running';
+		END_IF
+		
+		// Cycle Stop, Operator Stop
+		IF CycleStopCommand OR Station.CycleFaulted THEN
+			CycleStopCommand	:= FALSE;
+			NextState 	:= 250;
+		END_IF
+	
+		
+	250 :	// Stop Station
+	
+		IF FirstEntry THEN
+			Station.StopRequest := TRUE;
+			StationStateMessage 		:= 'Stopping...';
+		END_IF;
+		
+		// Wait for OK To Stop
+		IF Station.OKToStop THEN
+			Station.StopRequest := FALSE;
+			Station.CycleAuto 	:= FALSE;
+			// Check if Fault Occured
+			IF Station.CycleFaulted THEN
+				NextState := 0;
+			ELSE
+				NextState := 100;
+			END_IF
+		END_IF
+		
+		
+	300	:	// Manual Mode
+	
+		IF FirstEntry THEN
+			Station.CycleManual := TRUE;
+			StationStateMessage 		:= 'Manual Mode';
+		END_IF
+		
+		// Wait for Stop Command or Fault
+		IF CycleStopCommand OR Station.CycleFaulted THEN
+			CycleStopCommand := FALSE;
+			NextState := 250;
+		END_IF
+		
+		IF State <> NextState THEN
+			Station.CycleManual				:= FALSE;
+			// Set Station Reset if Configured
+			Station.StationResetRequired	:= ResetAfterManualMode;
+		END_IF
+	
+END_CASE
+
+
+// State Update Logic
+IF NextState <> State THEN
+	FirstEntry 				:= TRUE;
+	State 					:= NextState;
+	
+	// Update State Trace
+	ModeTimeStamp.DateTime	:= F_GetTimeStamp();
+	ModeTimeStamp.State		:= NextState;
+	ModeTimeStamp.Station	:= Station.StationID;
+	Station.StationStateTraceFIFO.LOAD(IN := ModeTimeStamp);
+ELSE
+	FirstEntry 	:= FALSE;
+	
+END_IF
+]]></ST>
+    </Implementation>
+    <LineIds Name="FB_StationState">
+      <LineId Id="2216" Count="265" />
+      <LineId Id="9" Count="0" />
+    </LineIds>
+  </POU>
+</TcPlcObject>
